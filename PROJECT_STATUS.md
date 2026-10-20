@@ -106,14 +106,13 @@
 | `npx prisma generate` | Success (0 exit code) | Generated Prisma Client v6.19.3 |
 | `npm run typecheck` | Success (0 exit code) | `tsc --noEmit` passed with 0 errors across all routes and libraries |
 | `npm run lint` | Success (0 exit code) | `eslint` passed with 0 errors and 0 warnings |
-| `git init` & `git commit` | Success (`2f0e92b`) | Initial commit created on `master` branch (37 files, secrets excluded) |
+| `git init`, `commit`, `push` | Success (`dd24ac4`) | Pushed to [GitHub](https://github.com/Prometheus2003/PrivateFlix.git) (`main` branch) |
 
 ---
 
 ### 4. Outstanding Bugs or Limitations
 - **Docker services not running yet:** PostgreSQL, MinIO, and Redis have not yet been started; database migrations have not been applied to a live database.
 - **Unit/Integration test files:** Test suites for auth routes, rate limiting, and session hashing are ready to be written once the live test database is wired up.
-- **Git remote:** No remote repository URL configured yet.
 
 ---
 
@@ -122,7 +121,6 @@ When resuming after quota refresh:
 1. Ensure Docker Desktop or Docker engine is running on the host machine.
 2. Run `docker compose up -d` to start PostgreSQL, MinIO, and Redis.
 3. Run `npm run db:push` (or `npm run db:migrate`) to create tables in PostgreSQL.
-4. Optional: If connecting to GitHub/GitLab, add remote (`git remote add origin <url>`) and push (`git push -u origin master`).
 
 ---
 
