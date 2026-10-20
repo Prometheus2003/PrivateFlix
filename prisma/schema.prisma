@@ -1,0 +1,337 @@
+// PrivateFlix Database Schema
+// ─────────────────────────────────────────────────────────────
+// Single-owner personal media streaming platform.
+// Every model with an ownerId enforces ownership at query time.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Application Settings ───────────────────────────────────
+// Stores key-value config, including the critical "appInitialized" flag.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+// ─── User (single owner) ───────────────────────────────────
+// Only one row should ever exist. Enforced by setup logic.
+model User {
+  id                String   @id @default(uuid()) @db.Uuid
+  email             String   @unique
+  username          String   @unique
+  passwordHash      String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+
+  sessions          Session[]
+  media             Media[]
+  collections       Collection[]
+  favorites         Favorite[]
+  playlists         Playlist[]
+  tags              Tag[]
+  uploads           Upload[]
+  playbackProgress  PlaybackProgress[]
+  auditEvents       AuditEvent[]
+
+  @@map("users")
+}
+
+// ─── Session ────────────────────────────────────────────────
+// Server-side sessions. Token is SHA-256 hashed before storage.
+model Session {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  tokenHash      String    @unique
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  lastActivityAt DateTime  @default(now())
+  revokedAt      DateTime?
+  ipAddress      String?
+  userAgent      String?
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ─── Media ──────────────────────────────────────────────────
+// Central media item — either IMAGE or VIDEO.
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum ProcessingStatus {
+  PENDING
+  UPLOADING
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+  DELETING
+}
+
+model Media {
+  id                  String           @id @default(uuid()) @db.Uuid
+  ownerId             String           @db.Uuid
+  type                MediaType
+  title               String
+  description         String           @default("")
+  originalFilename    String           // Display only — never used for storage paths
+  storageKey          String           @unique
+  mimeType            String
+  fileSize            BigInt           @default(0)
+  checksum            String?
+  duration            Float?           // seconds, for VIDEO
+  width               Int?
+  height              Int?
+  codec               String?
+  bitrate             Int?
+  processingStatus    ProcessingStatus @default(PENDING)
+  processingError     String?
+  thumbnailStorageKey String?
+  previewStorageKey   String?
+  metadata            Json?            // Additional extracted metadata
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  uploadedAt          DateTime?
+  deletedAt           DateTime?        // Soft delete
+
+  owner              User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  collectionItems    CollectionItem[]
+  mediaTags          MediaTag[]
+  favorites          Favorite[]
+  playbackProgress   PlaybackProgress[]
+  playlistItems      PlaylistItem[]
+  uploads            Upload[]
+  processingJobs     ProcessingJob[]
+  coverForCollections Collection[]     @relation("CoverMedia")
+
+  @@index([ownerId])
+  @@index([ownerId, type])
+  @@index([ownerId, processingStatus])
+  @@index([ownerId, createdAt])
+  @@index([ownerId, deletedAt])
+  @@index([title])
+  @@map("media")
+}
+
+// ─── Collection ─────────────────────────────────────────────
+// Logical groupings of media items. Support nested collections.
+model Collection {
+  id           String    @id @default(uuid()) @db.Uuid
+  ownerId      String    @db.Uuid
+  name         String
+  description  String    @default("")
+  coverMediaId String?   @db.Uuid
+  parentId     String?   @db.Uuid
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  coverMedia   Media?    @relation("CoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
+  parent       Collection? @relation("CollectionHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Collection[] @relation("CollectionHierarchy")
+  items        CollectionItem[]
+
+  @@index([ownerId])
+  @@index([parentId])
+  @@map("collections")
+}
+
+// ─── CollectionItem ─────────────────────────────────────────
+model CollectionItem {
+  collectionId String   @db.Uuid
+  mediaId      String   @db.Uuid
+  position     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  media        Media      @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, mediaId])
+  @@index([mediaId])
+  @@map("collection_items")
+}
+
+// ─── Tag ────────────────────────────────────────────────────
+model Tag {
+  id      String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  name    String
+
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  mediaTags MediaTag[]
+
+  @@unique([ownerId, name])
+  @@map("tags")
+}
+
+// ─── MediaTag ───────────────────────────────────────────────
+model MediaTag {
+  mediaId String @db.Uuid
+  tagId   String @db.Uuid
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([mediaId, tagId])
+  @@map("media_tags")
+}
+
+// ─── Favorite ───────────────────────────────────────────────
+model Favorite {
+  userId    String   @db.Uuid
+  mediaId   String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([userId, mediaId])
+  @@map("favorites")
+}
+
+// ─── PlaybackProgress ───────────────────────────────────────
+model PlaybackProgress {
+  userId          String   @db.Uuid
+  mediaId         String   @db.Uuid
+  positionSeconds Float    @default(0)
+  durationSeconds Float    @default(0)
+  lastPlayedAt    DateTime @default(now())
+  completed       Boolean  @default(false)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([userId, mediaId])
+  @@map("playback_progress")
+}
+
+// ─── Playlist ───────────────────────────────────────────────
+model Playlist {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String   @db.Uuid
+  name        String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items PlaylistItem[]
+
+  @@index([ownerId])
+  @@map("playlists")
+}
+
+// ─── PlaylistItem ───────────────────────────────────────────
+model PlaylistItem {
+  playlistId String @db.Uuid
+  mediaId    String @db.Uuid
+  position   Int    @default(0)
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  media    Media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, mediaId])
+  @@map("playlist_items")
+}
+
+// ─── Upload ─────────────────────────────────────────────────
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+  CANCELLED
+}
+
+model Upload {
+  id              String       @id @default(uuid()) @db.Uuid
+  ownerId         String       @db.Uuid
+  mediaId         String?      @db.Uuid
+  status          UploadStatus @default(PENDING)
+  bytesUploaded   BigInt       @default(0)
+  totalBytes      BigInt       @default(0)
+  errorMessage    String?
+  storageUploadId String?      // Multipart upload ID from S3
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  media Media? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([status])
+  @@map("uploads")
+}
+
+// ─── ProcessingJob ──────────────────────────────────────────
+enum JobType {
+  THUMBNAIL
+  TRANSCODE
+  METADATA
+  CLEANUP
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ProcessingJob {
+  id           String    @id @default(uuid()) @db.Uuid
+  mediaId      String    @db.Uuid
+  type         JobType
+  status       JobStatus @default(QUEUED)
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(3)
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([mediaId])
+  @@index([status])
+  @@map("processing_jobs")
+}
+
+// ─── AuditEvent ─────────────────────────────────────────────
+// Security event log. Never log passwords, tokens, or media content.
+model AuditEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String?  @db.Uuid
+  action       String   // e.g. "login", "logout", "password_change", "setup"
+  resourceType String?  // e.g. "session", "media", "collection"
+  resourceId   String?
+  ipAddress    String?
+  details      Json?    // Safe context (never secrets)
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_events")
+}
