@@ -52,8 +52,8 @@ prisma/*.db-journal
 docker-data/
 
 # media (never commit private media)
-uploads/
-media/
+/uploads/
+/media/
 *.mp4
 *.mkv
 *.mov
