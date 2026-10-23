@@ -1,3 +1,4 @@
+import { getEnv } from "@/lib/validation/env";
 /**
  * Media file validation.
  * Validates file type, size, and magic bytes (file signature) before accepting uploads.
@@ -12,12 +13,9 @@
 
 // ─── Allowed Types ──────────────────────────────────────────
 
-const DEFAULT_VIDEO_TYPES = ["mp4", "webm", "mkv", "mov", "avi"];
-const DEFAULT_IMAGE_TYPES = ["jpg", "jpeg", "png", "webp", "gif", "heic"];
-
 function getAllowedTypes(): { video: string[]; image: string[] } {
-  const videoStr = process.env.ALLOWED_VIDEO_TYPES ?? DEFAULT_VIDEO_TYPES.join(",");
-  const imageStr = process.env.ALLOWED_IMAGE_TYPES ?? DEFAULT_IMAGE_TYPES.join(",");
+  const videoStr = getEnv().ALLOWED_VIDEO_TYPES;
+  const imageStr = getEnv().ALLOWED_IMAGE_TYPES;
 
   return {
     video: videoStr.split(",").map((t) => t.trim().toLowerCase()),
@@ -26,7 +24,7 @@ function getAllowedTypes(): { video: string[]; image: string[] } {
 }
 
 function getMaxUploadSize(): number {
-  return parseInt(process.env.MAX_UPLOAD_SIZE ?? "10737418240", 10); // 10GB
+  return getEnv().MAX_UPLOAD_SIZE; // 10GB
 }
 
 // ─── MIME type mapping ──────────────────────────────────────
@@ -59,31 +57,6 @@ const MIME_TO_EXTENSION: Record<string, string> = {
 };
 
 // ─── Magic bytes (file signatures) ──────────────────────────
-
-interface MagicSignature {
-  bytes: number[];
-  offset: number;
-  mime: string;
-}
-
-const MAGIC_SIGNATURES: MagicSignature[] = [
-  // JPEG: FF D8 FF
-  { bytes: [0xff, 0xd8, 0xff], offset: 0, mime: "image/jpeg" },
-  // PNG: 89 50 4E 47
-  { bytes: [0x89, 0x50, 0x4e, 0x47], offset: 0, mime: "image/png" },
-  // GIF87a / GIF89a
-  { bytes: [0x47, 0x49, 0x46, 0x38], offset: 0, mime: "image/gif" },
-  // WebP: RIFF....WEBP
-  { bytes: [0x52, 0x49, 0x46, 0x46], offset: 0, mime: "image/webp" },
-  // MP4 / MOV: ftyp at offset 4
-  { bytes: [0x66, 0x74, 0x79, 0x70], offset: 4, mime: "video/mp4" },
-  // AVI: RIFF....AVI
-  { bytes: [0x52, 0x49, 0x46, 0x46], offset: 0, mime: "video/x-msvideo" },
-  // MKV / WebM: EBML header 1A 45 DF A3
-  { bytes: [0x1a, 0x45, 0xdf, 0xa3], offset: 0, mime: "video/x-matroska" },
-  // HEIC: ftyp at offset 4 with heic brand
-  { bytes: [0x66, 0x74, 0x79, 0x70], offset: 4, mime: "image/heic" },
-];
 
 // ─── Validation Types ───────────────────────────────────────
 
@@ -146,7 +119,7 @@ export function validateMimeType(contentType: string): ValidationResult {
 export function validateFileSize(sizeBytes: number): ValidationResult {
   const maxSize = getMaxUploadSize();
 
-  if (sizeBytes <= 0) {
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
     return { valid: false, error: "File size must be greater than 0" };
   }
 
@@ -167,63 +140,85 @@ export function validateFileSize(sizeBytes: number): ValidationResult {
  */
 export function validateMagicBytes(
   header: Buffer,
-  declaredMime: string
+  declaredMime: string,
 ): ValidationResult {
-  if (header.length < 8) {
-    return { valid: false, error: "File header too short for signature validation" };
-  }
-
-  // Find matching signatures
-  const matches: MagicSignature[] = [];
-  for (const sig of MAGIC_SIGNATURES) {
-    if (header.length < sig.offset + sig.bytes.length) continue;
-
-    const match = sig.bytes.every(
-      (byte, i) => header[sig.offset + i] === byte
-    );
-    if (match) {
-      matches.push(sig);
+  const mime = declaredMime.split(";")[0].trim().toLowerCase();
+  const text = (offset: number, length: number) =>
+    header.subarray(offset, offset + length).toString("ascii");
+  let valid = false;
+  switch (mime) {
+    case "image/jpeg":
+      valid =
+        header.length >= 3 &&
+        header.subarray(0, 3).equals(Buffer.from([255, 216, 255]));
+      break;
+    case "image/png":
+      valid = header
+        .subarray(0, 8)
+        .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      break;
+    case "image/gif":
+      valid = ["GIF87a", "GIF89a"].includes(text(0, 6));
+      break;
+    case "image/webp":
+      valid =
+        header.length >= 12 && text(0, 4) === "RIFF" && text(8, 4) === "WEBP";
+      break;
+    case "video/x-msvideo":
+      valid =
+        header.length >= 12 && text(0, 4) === "RIFF" && text(8, 4) === "AVI ";
+      break;
+    case "video/webm":
+    case "video/x-matroska":
+      valid =
+        header.subarray(0, 4).equals(Buffer.from([26, 69, 223, 163])) &&
+        header.includes(
+          Buffer.from(mime === "video/webm" ? "webm" : "matroska"),
+        );
+      break;
+    case "image/heic":
+    case "video/mp4":
+    case "video/quicktime": {
+      if (header.length < 16 || text(4, 4) !== "ftyp") break;
+      const brand = text(8, 4);
+      const heic = [
+        "heic",
+        "heix",
+        "hevc",
+        "hevx",
+        "heim",
+        "heis",
+        "hevm",
+        "hevs",
+      ];
+      valid =
+        mime === "image/heic"
+          ? heic.includes(brand)
+          : mime === "video/quicktime"
+            ? brand === "qt  "
+            : [
+                "isom",
+                "iso2",
+                "iso3",
+                "iso4",
+                "iso5",
+                "iso6",
+                "mp41",
+                "mp42",
+                "avc1",
+                "M4V ",
+                "MSNV",
+                "dash",
+              ].includes(brand);
+      break;
     }
   }
-
-  if (matches.length === 0) {
-    // No recognized signature — could be a valid format we don't fingerprint,
-    // or could be a spoofed file. Allow but flag it.
-    return { valid: true }; // Rely on extension/MIME validation + FFprobe later
-  }
-
-  // Check if the declared MIME matches any detected signature
-  const normalizedDeclared = declaredMime.split(";")[0].trim().toLowerCase();
-  const matchesDeclared = matches.some((m) => {
-    // Allow video/mp4 ↔ video/quicktime (ftyp header covers both)
-    if (
-      (normalizedDeclared === "video/mp4" || normalizedDeclared === "video/quicktime") &&
-      (m.mime === "video/mp4" || m.mime === "image/heic")
-    ) {
-      return true;
-    }
-    // Allow video/webm ↔ video/x-matroska (same EBML container)
-    if (
-      (normalizedDeclared === "video/webm" || normalizedDeclared === "video/x-matroska") &&
-      m.mime === "video/x-matroska"
-    ) {
-      return true;
-    }
-    // Allow RIFF-based formats (AVI, WebP)
-    if (normalizedDeclared === "image/webp" && m.mime === "image/webp") return true;
-    if (normalizedDeclared === "video/x-msvideo" && m.mime === "video/x-msvideo") return true;
-
-    return m.mime === normalizedDeclared;
-  });
-
-  if (!matchesDeclared) {
-    return {
-      valid: false,
-      error: `File signature does not match declared type '${normalizedDeclared}'`,
-    };
-  }
-
-  return { valid: true };
+  return valid
+    ? { valid: true }
+    : {
+        valid: false,
+        error: "File signature does not match its declared media type",
+      };
 }
 
 /**
@@ -238,7 +233,7 @@ export function validateUpload(
   filename: string,
   contentType: string,
   sizeBytes: number,
-  headerBytes?: Buffer
+  headerBytes?: Buffer,
 ): ValidationResult {
   // 1. Validate extension
   const extResult = validateFileExtension(filename);
@@ -248,12 +243,13 @@ export function validateUpload(
   const sizeResult = validateFileSize(sizeBytes);
   if (!sizeResult.valid) return sizeResult;
 
-  // 3. Validate magic bytes if available
-  if (headerBytes && headerBytes.length >= 8) {
-    const magicResult = validateMagicBytes(headerBytes, contentType);
-    if (!magicResult.valid) return magicResult;
-  }
-
+  const mime = contentType.split(";")[0].trim().toLowerCase();
+  if (!validateMimeType(mime).valid || mime !== extResult.mimeType)
+    return { valid: false, error: "Filename and media type do not match" };
+  if (!headerBytes)
+    return { valid: false, error: "File signature is required" };
+  const magicResult = validateMagicBytes(headerBytes, mime);
+  if (!magicResult.valid) return magicResult;
   return extResult;
 }
 

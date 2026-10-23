@@ -1,17 +1,13 @@
-# PrivateFlix - Docker Compose Development Services
-# Provides PostgreSQL, MinIO (S3-compatible), and Redis for local development
-
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: privateflix-postgres
+    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
     environment:
       POSTGRES_DB: privateflix
       POSTGRES_USER: privateflix
-      POSTGRES_PASSWORD: devpass_change_in_production
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run npm run env:init}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,45 +15,51 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
   minio:
-    image: minio/minio:latest
-    container_name: privateflix-minio
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.minio
+    image: privateflix-minio:2025-10-15
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin_change_in_production
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?Run npm run env:init}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?Run npm run env:init}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
-
   redis:
-    image: redis:7-alpine
-    container_name: privateflix-redis
+    image: redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run npm run env:init}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command:
+      [
+        "sh",
+        "-c",
+        'exec redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"',
+      ]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD-SHELL",
+          'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
-
 volumes:
   postgres_data:
-    driver: local
   minio_data:
-    driver: local
   redis_data:
-    driver: local

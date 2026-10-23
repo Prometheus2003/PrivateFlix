@@ -35,7 +35,7 @@ export function generateStorageKey(
   category: MediaCategory,
   extension: string,
   purpose: KeyPurpose = "original",
-  mediaId?: string
+  mediaId?: string,
 ): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -56,7 +56,7 @@ export function generateStorageKey(
 export function generateHlsSegmentKey(
   mediaId: string,
   quality: string,
-  segmentNumber: number
+  segmentNumber: number,
 ): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -71,7 +71,7 @@ export function generateHlsSegmentKey(
  */
 export function generateHlsManifestKey(
   mediaId: string,
-  quality?: string
+  quality?: string,
 ): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -94,7 +94,9 @@ export function extractMediaIdFromKey(key: string): string | null {
   // The UUID is always the 4th segment (index 3)
   const uuid = parts[3];
   // Basic UUID format validation
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)) {
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)
+  ) {
     return uuid;
   }
   return null;
@@ -107,7 +109,7 @@ export function extractMediaIdFromKey(key: string): string | null {
 export function getMediaKeyPrefix(
   category: MediaCategory,
   mediaId: string,
-  uploadDate: Date
+  uploadDate: Date,
 ): string {
   const year = uploadDate.getFullYear();
   const month = String(uploadDate.getMonth() + 1).padStart(2, "0");
@@ -118,9 +120,11 @@ export function getMediaKeyPrefix(
  * Sanitize a file extension: lowercase, strip dots, alphanumeric + limited chars only.
  */
 function sanitizeExtension(ext: string): string {
-  return ext
-    .toLowerCase()
-    .replace(/^\.+/, "")
-    .replace(/[^a-z0-9]/g, "")
-    .substring(0, 10) || "bin";
+  return (
+    ext
+      .toLowerCase()
+      .replace(/^\.+/, "")
+      .replace(/[^a-z0-9]/g, "")
+      .substring(0, 10) || "bin"
+  );
 }

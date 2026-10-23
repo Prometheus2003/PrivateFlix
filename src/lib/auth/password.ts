@@ -32,7 +32,7 @@ export async function hashPassword(plaintext: string): Promise<string> {
  */
 export async function verifyPassword(
   storedHash: string,
-  plaintext: string
+  plaintext: string,
 ): Promise<boolean> {
   try {
     return await argon2.verify(storedHash, plaintext);

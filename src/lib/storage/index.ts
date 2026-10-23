@@ -1,3 +1,4 @@
+import "server-only";
 /**
  * Singleton storage adapter instance.
  * Import this to use storage throughout the application.

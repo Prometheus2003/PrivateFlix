@@ -1,318 +1,314 @@
-/**
- * MinIO/S3-compatible storage adapter implementation.
- *
- * @module lib/storage/s3
- * @security
- *   - Connects to private MinIO bucket — NO anonymous/public access
- *   - NEVER creates presigned URLs for media objects
- *   - All operations use server-side credentials (never client-visible)
- *   - Streams objects without loading full files into memory
- */
-import { Client as MinioClient } from "minio";
+import { isDeepStrictEqual } from "node:util";
+import "server-only";
+import {
+  S3Client,
+  HeadBucketCommand,
+  CreateBucketCommand,
+  PutBucketPolicyCommand,
+  GetBucketPolicyCommand,
+  HeadObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+  type BucketLocationConstraint,
+} from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { Readable } from "node:stream";
-import type {
-  StorageAdapter,
-  ByteRange,
-  ObjectMetadata,
-  PutObjectOptions,
-  PartInfo,
-  GetObjectResult,
-} from "./adapter";
+import { getEnv } from "@/lib/validation/env";
+import type { StorageAdapter, ObjectMetadata } from "./adapter";
 
-// ─── Configuration ──────────────────────────────────────────
-
-interface S3Config {
-  endpoint: string;
-  port: number;
-  useSSL: boolean;
-  accessKey: string;
-  secretKey: string;
-  bucket: string;
-  region: string;
+function missing(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (("name" in error &&
+      ["NotFound", "NoSuchKey", "NoSuchBucket"].includes(String(error.name))) ||
+      ("$metadata" in error &&
+        typeof error.$metadata === "object" &&
+        error.$metadata !== null &&
+        "httpStatusCode" in error.$metadata &&
+        error.$metadata.httpStatusCode === 404))
+  );
 }
-
-function parseS3Config(): S3Config {
-  const endpoint = process.env.S3_ENDPOINT ?? "http://localhost:9000";
-  const url = new URL(endpoint);
-
+export function privateBucketPolicy(bucket: string) {
   return {
-    endpoint: url.hostname,
-    port: url.port ? parseInt(url.port, 10) : url.protocol === "https:" ? 443 : 9000,
-    useSSL: url.protocol === "https:",
-    accessKey: process.env.S3_ACCESS_KEY ?? "minioadmin",
-    secretKey: process.env.S3_SECRET_KEY ?? "minioadmin",
-    bucket: process.env.S3_BUCKET ?? "privateflix-media",
-    region: process.env.S3_REGION ?? "us-east-1",
-  };
-}
-
-// ─── Singleton Client ───────────────────────────────────────
-
-let client: MinioClient | null = null;
-let config: S3Config | null = null;
-
-function getClient(): MinioClient {
-  if (!client) {
-    config = parseS3Config();
-    client = new MinioClient({
-      endPoint: config.endpoint,
-      port: config.port,
-      useSSL: config.useSSL,
-      accessKey: config.accessKey,
-      secretKey: config.secretKey,
-      region: config.region,
-    });
-  }
-  return client;
-}
-
-function getBucket(): string {
-  if (!config) {
-    config = parseS3Config();
-  }
-  return config.bucket;
-}
-
-// ─── Implementation ─────────────────────────────────────────
-
-/**
- * Ensure the private bucket exists. Creates it if missing.
- * Sets the bucket policy to DENY all public access.
- *
- * @security This must run at startup before any uploads.
- */
-async function ensureBucket(): Promise<void> {
-  const mc = getClient();
-  const bucket = getBucket();
-
-  const exists = await mc.bucketExists(bucket);
-  if (!exists) {
-    await mc.makeBucket(bucket, config?.region ?? "us-east-1");
-    console.log(`[STORAGE] Created private bucket: ${bucket}`);
-  }
-
-  // Set private-only policy (deny anonymous access)
-  const privatePolicy = JSON.stringify({
     Version: "2012-10-17",
     Statement: [
       {
-        Sid: "DenyPublicAccess",
+        Sid: "DenyAnonymousAccess",
         Effect: "Deny",
-        Principal: "*",
-        Action: ["s3:GetObject"],
-        Resource: [`arn:aws:s3:::${bucket}/*`],
-        Condition: {
-          StringNotEquals: {
-            "aws:PrincipalType": "IAMUser",
-          },
-        },
+        Principal: { AWS: ["*"] },
+        Action: ["s3:*"],
+        Resource: ["arn:aws:s3:::" + bucket, "arn:aws:s3:::" + bucket + "/*"],
+        Condition: { StringEquals: { "aws:principaltype": ["Anonymous"] } },
       },
     ],
-  });
-
-  try {
-    await mc.setBucketPolicy(bucket, privatePolicy);
-  } catch {
-    // Some S3-compatible stores may not support bucket policies
-    // MinIO supports them, but we log and continue if it fails
-    console.warn("[STORAGE] Could not set bucket policy (may not be supported by backend)");
-  }
+  };
+}
+function metadata(result: {
+  ContentType?: string;
+  ContentLength?: number;
+  ETag?: string;
+  LastModified?: Date;
+}): ObjectMetadata {
+  if (!Number.isSafeInteger(result.ContentLength) || result.ContentLength! < 0)
+    throw new Error("Storage returned invalid object length");
+  return {
+    contentType: result.ContentType ?? "application/octet-stream",
+    contentLength: result.ContentLength!,
+    etag: result.ETag,
+    lastModified: result.LastModified,
+  };
 }
 
-// ─── StorageAdapter Implementation ──────────────────────────
-
-export function createS3StorageAdapter(): StorageAdapter {
-  // Ensure bucket exists on first use
-  let bucketReady = false;
-  const ensureReady = async () => {
-    if (!bucketReady) {
-      await ensureBucket();
-      bucketReady = true;
+// A supplied client is useful for transport contract tests; production always uses
+// server-only credentials and path-style S3 requests compatible with MinIO.
+export function createS3StorageAdapter(
+  suppliedClient?: S3Client,
+): StorageAdapter {
+  let client: S3Client | undefined = suppliedClient;
+  function getClient() {
+    if (!client) {
+      const env = getEnv();
+      client = new S3Client({
+        endpoint: env.S3_ENDPOINT,
+        region: env.S3_REGION,
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: env.S3_ACCESS_KEY,
+          secretAccessKey: env.S3_SECRET_KEY,
+        },
+        requestChecksumCalculation: "WHEN_REQUIRED",
+        responseChecksumValidation: "WHEN_REQUIRED",
+        maxAttempts: 3,
+        requestHandler: { connectionTimeout: 5000, requestTimeout: 60000 },
+      });
     }
-  };
-
-  return {
-    async putObject(
-      key: string,
-      body: Readable | Buffer,
-      options: PutObjectOptions
-    ): Promise<void> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      const metaHeaders: Record<string, string> = {
-        "Content-Type": options.contentType,
-        ...(options.metadata ?? {}),
-      };
-
-      if (body instanceof Buffer) {
-        await mc.putObject(bucket, key, body, body.length, metaHeaders);
-      } else {
-        await mc.putObject(
-          bucket,
-          key,
-          body,
-          options.contentLength ?? undefined,
-          metaHeaders
+    return client;
+  }
+  const bucket = () => getEnv().S3_BUCKET;
+  let readiness: Promise<void> | undefined;
+  async function initialize() {
+    const c = getClient();
+    const Bucket = bucket();
+    try {
+      await c.send(new HeadBucketCommand({ Bucket }));
+    } catch (error) {
+      if (!missing(error)) throw error;
+      const region = getEnv().S3_REGION;
+      try {
+        await c.send(
+          new CreateBucketCommand({
+            Bucket,
+            ...(region === "us-east-1"
+              ? {}
+              : {
+                  CreateBucketConfiguration: {
+                    LocationConstraint: region as BucketLocationConstraint,
+                  },
+                }),
+          }),
         );
+      } catch (creationError) {
+        if (
+          !(creationError instanceof Error) ||
+          creationError.name !== "BucketAlreadyOwnedByYou"
+        )
+          throw creationError;
+      }
+    }
+    const policy = privateBucketPolicy(Bucket);
+    // Never continue after a policy failure. Replace any legacy public grants.
+    await c.send(
+      new PutBucketPolicyCommand({ Bucket, Policy: JSON.stringify(policy) }),
+    );
+    const verified = await c.send(new GetBucketPolicyCommand({ Bucket }));
+    if (
+      !verified.Policy ||
+      !isDeepStrictEqual(JSON.parse(verified.Policy), policy)
+    )
+      throw new Error("Private bucket policy verification failed");
+  }
+  function ready() {
+    readiness ??= initialize().catch((error) => {
+      readiness = undefined;
+      throw error;
+    });
+    return readiness;
+  }
+  async function head(key: string) {
+    await ready();
+    return getClient().send(
+      new HeadObjectCommand({ Bucket: bucket(), Key: key }),
+    );
+  }
+  return {
+    async putObject(key, body, options) {
+      await ready();
+      const upload = new Upload({
+        client: getClient(),
+        queueSize: 2,
+        partSize: 8 * 1024 * 1024,
+        leavePartsOnError: false,
+        params: {
+          Bucket: bucket(),
+          Key: key,
+          Body: body,
+          ContentType: options.contentType,
+          ContentLength: Buffer.isBuffer(body)
+            ? body.length
+            : options.contentLength,
+          Metadata: options.metadata,
+        },
+      });
+      await upload.done();
+    },
+    async getObject(key, range) {
+      const stat = await head(key);
+      const info = metadata(stat);
+      if (!stat.ETag) throw new Error("Storage returned no object ETag");
+      if (
+        range &&
+        (!Number.isSafeInteger(range.start) ||
+          range.start < 0 ||
+          range.start >= info.contentLength ||
+          (range.end !== undefined &&
+            (!Number.isSafeInteger(range.end) ||
+              range.end < range.start ||
+              range.end >= info.contentLength)))
+      )
+        throw new Error("Invalid object range");
+      const result = await getClient().send(
+        new GetObjectCommand({
+          Bucket: bucket(),
+          Key: key,
+          IfMatch: stat.ETag,
+          ...(range
+            ? { Range: "bytes=" + range.start + "-" + (range.end ?? "") }
+            : {}),
+        }),
+      );
+      if (!(result.Body instanceof Readable))
+        throw new Error("Storage did not return a Node stream");
+      return { stream: result.Body, metadata: info };
+    },
+    async getObjectMetadata(key) {
+      return metadata(await head(key));
+    },
+    async deleteObject(key) {
+      await ready();
+      await getClient().send(
+        new DeleteObjectCommand({ Bucket: bucket(), Key: key }),
+      );
+    },
+    async deleteObjects(keys) {
+      if (!keys.length) return;
+      await ready();
+      for (let offset = 0; offset < keys.length; offset += 1000) {
+        const result = await getClient().send(
+          new DeleteObjectsCommand({
+            Bucket: bucket(),
+            Delete: {
+              Objects: keys
+                .slice(offset, offset + 1000)
+                .map((Key) => ({ Key })),
+              Quiet: true,
+            },
+          }),
+        );
+        if (result.Errors?.length)
+          throw new Error("Storage failed to delete one or more objects");
       }
     },
-
-    async getObject(key: string, range?: ByteRange): Promise<GetObjectResult> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      // Get metadata first
-      const stat = await mc.statObject(bucket, key);
-      const metadata: ObjectMetadata = {
-        contentType: stat.metaData?.["content-type"] ?? "application/octet-stream",
-        contentLength: stat.size,
-        etag: stat.etag,
-        lastModified: stat.lastModified,
-      };
-
-      let stream: Readable;
-      if (range) {
-        const length = range.end !== undefined
-          ? range.end - range.start + 1
-          : undefined;
-        stream = await mc.getPartialObject(bucket, key, range.start, length);
-      } else {
-        stream = await mc.getObject(bucket, key);
-      }
-
-      return { stream, metadata };
-    },
-
-    async getObjectMetadata(key: string): Promise<ObjectMetadata> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      const stat = await mc.statObject(bucket, key);
-      return {
-        contentType: stat.metaData?.["content-type"] ?? "application/octet-stream",
-        contentLength: stat.size,
-        etag: stat.etag,
-        lastModified: stat.lastModified,
-      };
-    },
-
-    async deleteObject(key: string): Promise<void> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      await mc.removeObject(bucket, key);
-    },
-
-    async deleteObjects(keys: string[]): Promise<void> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      if (keys.length === 0) return;
-      await mc.removeObjects(bucket, keys);
-    },
-
-    async objectExists(key: string): Promise<boolean> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
+    async objectExists(key) {
+      await ready(); // Initialization failures must never masquerade as missing objects.
       try {
-        await mc.statObject(bucket, key);
+        await head(key);
         return true;
-      } catch {
-        return false;
+      } catch (error) {
+        if (missing(error)) return false;
+        throw error;
       }
     },
-
-    // ─── Multipart Upload ──────────────────────────────────
-
-    async createMultipartUpload(
-      key: string,
-      contentType: string
-    ): Promise<string> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      // MinIO's JS client doesn't expose initiateNewMultipartUpload directly
-      // in the public API. We use the internal method available in the client.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const uploadId = await (mc as any).initiateNewMultipartUpload(
-        bucket,
-        key,
-        { "Content-Type": contentType }
+    async createMultipartUpload(key, contentType) {
+      await ready();
+      const result = await getClient().send(
+        new CreateMultipartUploadCommand({
+          Bucket: bucket(),
+          Key: key,
+          ContentType: contentType,
+        }),
       );
-
-      return uploadId as string;
+      if (!result.UploadId)
+        throw new Error("Storage did not return an upload ID");
+      return result.UploadId;
     },
-
-    async uploadPart(
-      key: string,
-      uploadId: string,
-      partNumber: number,
-      body: Buffer
-    ): Promise<string> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (mc as any).uploadPart(
-        { bucketName: bucket, objectName: key, uploadID: uploadId },
-        partNumber,
-        body,
-        body.length,
-        ""
+    async uploadPart(key, uploadId, partNumber, body) {
+      if (
+        !Number.isInteger(partNumber) ||
+        partNumber < 1 ||
+        partNumber > 10000 ||
+        body.length > 64 * 1024 * 1024
+      )
+        throw new Error("Invalid upload part");
+      await ready();
+      const result = await getClient().send(
+        new UploadPartCommand({
+          Bucket: bucket(),
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+          Body: body,
+          ContentLength: body.length,
+        }),
       );
-
-      return result?.etag ?? "";
+      if (!result.ETag) throw new Error("Storage did not return a part ETag");
+      return result.ETag;
     },
-
-    async completeMultipartUpload(
-      key: string,
-      uploadId: string,
-      parts: PartInfo[]
-    ): Promise<void> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      const etags = parts.map((p) => ({
-        part: p.partNumber,
-        etag: p.etag,
-      }));
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (mc as any).completeMultipartUpload(
-        bucket,
-        key,
-        uploadId,
-        etags
+    async completeMultipartUpload(key, uploadId, parts) {
+      const sorted = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+      if (
+        !sorted.length ||
+        sorted.length > 10000 ||
+        sorted.some(
+          (part, index) => part.partNumber !== index + 1 || !part.etag,
+        )
+      )
+        throw new Error("Invalid upload manifest");
+      await ready();
+      await getClient().send(
+        new CompleteMultipartUploadCommand({
+          Bucket: bucket(),
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: sorted.map((part) => ({
+              PartNumber: part.partNumber,
+              ETag: part.etag,
+            })),
+          },
+        }),
       );
     },
-
-    async abortMultipartUpload(key: string, uploadId: string): Promise<void> {
-      await ensureReady();
-      const mc = getClient();
-      const bucket = getBucket();
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (mc as any).abortMultipartUpload(bucket, key, uploadId);
+    async abortMultipartUpload(key, uploadId) {
+      await ready();
+      await getClient().send(
+        new AbortMultipartUploadCommand({
+          Bucket: bucket(),
+          Key: key,
+          UploadId: uploadId,
+        }),
+      );
     },
-
-    // ─── Health Check ──────────────────────────────────────
-
-    async healthCheck(): Promise<boolean> {
+    async healthCheck() {
       try {
-        const mc = getClient();
-        const bucket = getBucket();
-        return await mc.bucketExists(bucket);
+        await ready();
+        await getClient().send(new HeadBucketCommand({ Bucket: bucket() }));
+        return true;
       } catch {
         return false;
       }

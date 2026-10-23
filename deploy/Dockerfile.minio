@@ -1,0 +1,14 @@
+# Local development only: upstream Community MinIO is archived.
+# Build its final security release rather than the older published binary image.
+FROM golang:1.24.8-bookworm@sha256:4ed690d6649d63c312b99a6120025ec79ce3b542968a37da53d6236c7c61a848 AS build
+WORKDIR /source
+RUN git init . && git remote add origin https://github.com/minio/minio.git && git fetch --depth=1 origin 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a && git checkout --detach FETCH_HEAD
+RUN CGO_ENABLED=0 go build -trimpath -o /out/minio .
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/* && mkdir /data && chown 10001:10001 /data
+COPY --from=build /out/minio /usr/local/bin/minio
+USER 10001:10001
+EXPOSE 9000 9001
+ENTRYPOINT ["minio"]
+CMD ["server", "/data", "--console-address", ":9001"]
+

@@ -1,59 +1,73 @@
-# PrivateFlix 🎬🔒
+# PrivateFlix
 
-A secure, self-hosted personal media streaming platform and photo/video vault. Designed with privacy as the first-class priority: single-owner access, authenticated streaming proxy, zero public links, and zero unauthorized metadata leaks.
+Self-hosted, single-owner photo and video vault in development. The current UI is a starter; do not deploy it publicly or upload sensitive media yet. Authentication hardening and storage privacy verification are the next implementation gates.
 
----
+## Current state
 
-## ⏸️ Current Status: PAUSED
+Phase 2 adds pinned direct npm dependencies, configuration validation, generated local credentials, initial migrations, Docker build scaffolding and configuration tests. See [PROJECT_STATUS.md](PROJECT_STATUS.md) and [Phase 2 evidence](docs/PHASE_2_FOUNDATION.md) for actual results and limitations. [Architecture and remaining phases](docs/PHASE_1_REVIEW.md) describe the full target.
 
-> **Phase 2 (Foundation & Authentication)** is implemented and paused awaiting quota refresh.
-> Type checking (`tsc --noEmit`) and linting (`eslint`) are fully passing with **0 errors and 0 warnings**.
-> See [`PROJECT_STATUS.md`](./PROJECT_STATUS.md) for full status and next phase roadmap.
+## Local setup
 
----
+Use Node 24.15.0 / npm 11.12.1 and Docker Desktop with Linux containers. Run from the repository root:
 
-## Architecture Overview
-
-- **Framework:** Next.js 16 (App Router) + React 19 + TypeScript (Strict Mode)
-- **Styling:** Tailwind CSS v4
-- **Database:** PostgreSQL 16 via Prisma 6 ORM
-- **Object Storage:** MinIO (Private S3-compatible bucket, zero public access)
-- **Authentication:** Argon2id password hashing + SHA-256 hashed session tokens + HttpOnly cookies
-- **Security:** Rate limiting with sliding-window lockouts, timing attack mitigation, central `requireAuth` ownership checks
-- **Task Queue:** BullMQ + Redis
-- **Media Engine:** FFmpeg/FFprobe (containerized)
-
----
-
-## Quick Start (When Resuming)
-
-### 1. Start Backing Services
-```bash
-docker compose up -d
-```
-Starts PostgreSQL (`localhost:5432`), MinIO (`localhost:9000` / Console `localhost:9001`), and Redis (`localhost:6379`).
-
-### 2. Push Database Schema
-```bash
-npx prisma db push
-```
-
-### 3. Run Development Server
-```bash
+```sh
+npm ci
+npm run env:init
+npm run db:generate
+docker compose up -d --build --wait
+npm run db:deploy
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
----
+Open http://localhost:3000. The app and backing service ports bind only to loopback. `env:init` refuses to overwrite an existing `.env`; on this working checkout a local configuration has already been generated. It contains unique development-only database/storage/Redis/session secrets and must stay untracked. `.env.example` contains placeholders only. On Windows restrict the `.env` ACL to your account; POSIX mode 0600 is requested by the generator but does not enforce Windows ACLs.
 
-## Scripts
+The MinIO development image builds the upstream final security-release source at a pinned revision. Building requires internet access and can take several minutes. Community MinIO is archived; the development container is not an endorsement for production. Phase 4 must verify private storage and choose/verify a maintained production S3-compatible backend. Development uses MinIO root credentials; production must provision a separate least-privilege identity.
 
-- `npm run dev` — Run Next.js dev server with Turbopack
-- `npm run build` — Build production bundle
-- `npm run typecheck` — TypeScript check (`tsc --noEmit`)
-- `npm run lint` — ESLint validation
-- `npm run db:generate` — Generate Prisma client
-- `npm run db:push` — Sync schema with PostgreSQL
-- `npm run db:studio` — Open Prisma Studio browser
-- `npm test` — Run Vitest unit & integration tests
-- `npm run test:e2e` — Run Playwright end-to-end tests
+The Compose stack does not run the app: use npm run dev. Keep Docker running for database-backed routes. No account or media is seeded. Redis uses a generated password, persistence and noeviction. Host ports must be free; do not remove an existing user's volumes to resolve conflicts.
+
+## Database migrations
+
+`npm run db:deploy` applies committed migrations to a new database, and is safe to repeat. For intentional schema development use `npm run db:migrate -- --name descriptive_change` and review the generated SQL. Do not use db:push for deployment. No reset or destructive migration command is part of the normal setup.
+
+If you already have data from an earlier db:push, back it up and compare its schema with this initial migration before baselining. Do not mark migrations applied without checking that they match. See the Prisma v6 migration guide linked in the Phase 2 report.
+
+## Checks
+
+```sh
+npm run db:validate
+npm run db:generate
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run build
+```
+
+Configuration tests do not replace authentication, storage or end-to-end security tests. Those suites remain to be implemented. Seven foundation browser/API smoke tests are configured. See docs/VERIFICATION_2026-10-22.md for the latest results and limitations. After building and configuring a test database, install Chromium with npx playwright install chromium, then run npm run test:startup and npm run test:e2e. Production is the default; PRIVATEFLIX_E2E_MODE=development selects development smoke testing. These tests do not cover unfinished media features or the complete security model.
+
+## Build and startup
+
+Local builds use Webpack and normal Next.js output for compatibility with the Windows sandbox. `npm start` binds loopback and requires a valid production configuration, including an HTTPS APP_URL. Use a TLS reverse proxy for actual production transport. `APP_URL` describes the external origin; the proxy may use local HTTP internally. Do not change NODE_ENV to bypass production validation.
+
+Dockerfile has runtime and migrate targets. It opts into standalone Linux packaging, excludes `.env` and media from the build context, runs the app as a non-root user and includes a database-backed health check. Supply secrets only at runtime. Container builds have not yet been verified on this machine. The production Compose/Caddy setup belongs to Phase 9.
+
+```sh
+docker build --target runtime -t privateflix:dev .
+docker build --target migrate -t privateflix-migrate:dev .
+```
+
+Before running a container, set DATABASE_URL, REDIS_URL and S3_ENDPOINT to service names reachable on its private Docker network, and APP_URL to the HTTPS public/private-network origin. Loopback addresses in the generated host-development .env do not work for container-to-container connections.
+
+## Troubleshooting
+
+- Missing Docker: install/start Docker Desktop, then run `docker version` before Compose.
+- Invalid environment: errors list field names only. Replace placeholders and check URL protocols, limits and HTTPS APP_URL; never paste credentials into issue reports.
+- Database unavailable: check `docker compose ps`, confirm port/credentials, then run db:deploy. Health returns 503 while PostgreSQL is unreachable.
+- Windows junction/package-copy error: use the default Webpack local build. Standalone packaging is selected only by PRIVATEFLIX_STANDALONE=true inside the Linux Docker build.
+- npm audit findings: review docs/PHASE_2_FOUNDATION.md. Do not run npm audit fix --force blindly; it proposes incompatible framework/ORM/storage changes.
+
+## Security and upload development
+
+Authentication, recovery and initial streaming upload ingestion are implemented. See [the current security/storage report](docs/SECURITY_STORAGE_PROGRESS.md) for setup-token requirements, endpoint contracts, verification and remaining phase work. The UI is not yet the completed product.
+
+Use npm run test:integration only with a disposable database named privateflix_security_test; the suite resets test records. npm run auth:recover is an offline server command with hidden password prompts.

@@ -1,18 +1,5 @@
-/**
- * POST /api/auth/change-password
- *
- * Change the owner's password. Requires current password verification.
- *
- * @security
- *   - Requires authentication
- *   - Verifies current password before accepting new one
- *   - Revokes all other sessions (session rotation)
- *   - Creates a new session
- *   - Logs audit event
- */
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
-import { requireAuth, getClientIp, getSafeUserAgent } from "@/lib/auth/require-auth";
+import { requireAuth, getSafeUserAgent } from "@/lib/auth/require-auth";
 import {
   hashPassword,
   verifyPassword,
@@ -24,110 +11,64 @@ import {
   setSessionCookie,
 } from "@/lib/auth/session";
 import { changePasswordSchema } from "@/lib/validation/schemas";
-import { logAuditEvent, AuditAction } from "@/lib/auth/audit";
+import {
+  assertSameOrigin,
+  readAuthBody,
+  authError,
+  authFailure,
+} from "@/lib/auth/http";
+import { consumeAuthAttempt } from "@/lib/auth/rate-limiter";
+import { authTransaction } from "@/lib/auth/transaction";
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAuth(request);
-    const ipAddress = getClientIp(request);
-
-    // Parse body
-    const body = await request.json().catch(() => null);
-    if (!body) {
-      return NextResponse.json(
-        { error: "Invalid request body" },
-        { status: 400, headers: { "Cache-Control": "private, no-store" } }
-      );
-    }
-
-    // Validate input
-    const validation = changePasswordSchema.safeParse(body);
-    if (!validation.success) {
-      return NextResponse.json(
-        {
-          error: "Validation failed",
-          details: validation.error.flatten().fieldErrors,
-        },
-        { status: 400, headers: { "Cache-Control": "private, no-store" } }
-      );
-    }
-
-    const { currentPassword, newPassword } = validation.data;
-
-    // Validate password strength
+    const { user, session } = await requireAuth(request);
+    assertSameOrigin(request);
+    await consumeAuthAttempt("password");
+    const parsed = changePasswordSchema.safeParse(await readAuthBody(request));
+    if (!parsed.success) throw authError(400, "Invalid password details");
+    const { currentPassword, newPassword } = parsed.data;
     const strengthError = validatePasswordStrength(newPassword);
-    if (strengthError) {
-      return NextResponse.json(
-        { error: strengthError },
-        { status: 400, headers: { "Cache-Control": "private, no-store" } }
-      );
-    }
-
-    // Load user with password hash
-    const fullUser = await prisma.user.findUnique({
-      where: { id: user.id },
-    });
-
-    if (!fullUser) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404, headers: { "Cache-Control": "private, no-store" } }
-      );
-    }
-
-    // Verify current password
-    const currentValid = await verifyPassword(fullUser.passwordHash, currentPassword);
-    if (!currentValid) {
-      return NextResponse.json(
-        { error: "Current password is incorrect" },
-        { status: 401, headers: { "Cache-Control": "private, no-store" } }
-      );
-    }
-
-    // Hash new password
-    const newHash = await hashPassword(newPassword);
-
-    // Update password and revoke all sessions in a transaction
-    await prisma.$transaction(async (tx) => {
+    if (strengthError) throw authError(400, strengthError);
+    const result = await authTransaction(async (tx) => {
+      const active = await tx.session.findFirst({
+        where: {
+          id: session.id,
+          userId: user.id,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      });
+      const owner = await tx.user.findUnique({ where: { id: user.id } });
+      if (
+        !active ||
+        !owner ||
+        !(await verifyPassword(owner.passwordHash, currentPassword))
+      )
+        throw authError(401, "Invalid credentials");
       await tx.user.update({
         where: { id: user.id },
         data: {
-          passwordHash: newHash,
+          passwordHash: await hashPassword(newPassword),
           passwordChangedAt: new Date(),
         },
       });
+      await revokeAllSessions(user.id, tx);
+      const replacement = await createSession(
+        { userId: user.id, userAgent: getSafeUserAgent(request) },
+        tx,
+      );
+      await tx.auditEvent.create({
+        data: { userId: user.id, action: "password_changed" },
+      });
+      return replacement;
     });
-
-    // Revoke all existing sessions
-    await revokeAllSessions(user.id);
-
-    // Create new session (session rotation)
-    const userAgent = getSafeUserAgent(request);
-    const { rawToken } = await createSession({
-      userId: user.id,
-      ipAddress,
-      userAgent,
-    });
-
-    await setSessionCookie(rawToken);
-
-    // Audit log
-    await logAuditEvent({
-      userId: user.id,
-      action: AuditAction.PASSWORD_CHANGED,
-      ipAddress,
-    });
-
+    await setSessionCookie(result.rawToken);
     return NextResponse.json(
       { message: "Password changed successfully" },
-      { headers: { "Cache-Control": "private, no-store" } }
+      { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("[CHANGE_PASSWORD] Error:", error);
-    return NextResponse.json(
-      { error: "An unexpected error occurred" },
-      { status: 500, headers: { "Cache-Control": "private, no-store" } }
-    );
+    return authFailure(error);
   }
 }

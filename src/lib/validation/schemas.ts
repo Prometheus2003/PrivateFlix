@@ -9,64 +9,62 @@ import { z } from "zod";
 // ─── Auth Schemas ───────────────────────────────────────────
 
 /** First-run setup: create the owner account */
-export const setupSchema = z.object({
-  email: z
-    .string()
-    .email("Invalid email address")
-    .max(255, "Email must be at most 255 characters")
-    .toLowerCase()
-    .trim(),
-  username: z
-    .string()
-    .min(3, "Username must be at least 3 characters")
-    .max(50, "Username must be at most 50 characters")
-    .regex(/^[a-zA-Z0-9_-]+$/, "Username can only contain letters, numbers, hyphens, and underscores")
-    .trim(),
-  password: z
-    .string()
-    .min(12, "Password must be at least 12 characters")
-    .max(128, "Password must be at most 128 characters"),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
+export const setupSchema = z
+  .object({
+    email: z
+      .string()
+      .email("Invalid email address")
+      .max(255, "Email must be at most 255 characters")
+      .toLowerCase()
+      .trim(),
+    username: z
+      .string()
+      .min(3, "Username must be at least 3 characters")
+      .max(50, "Username must be at most 50 characters")
+      .regex(
+        /^[a-zA-Z0-9_-]+$/,
+        "Username can only contain letters, numbers, hyphens, and underscores",
+      )
+      .trim(),
+    password: z
+      .string()
+      .min(12, "Password must be at least 12 characters")
+      .max(128, "Password must be at most 128 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 export type SetupInput = z.infer<typeof setupSchema>;
 
 /** Login */
 export const loginSchema = z.object({
-  login: z
-    .string()
-    .min(1, "Email or username is required")
-    .max(255)
-    .trim(),
-  password: z
-    .string()
-    .min(1, "Password is required")
-    .max(128),
+  login: z.string().min(1, "Email or username is required").max(255).trim(),
+  password: z.string().min(1, "Password is required").max(128),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
 /** Password change */
-export const changePasswordSchema = z.object({
-  currentPassword: z
-    .string()
-    .min(1, "Current password is required")
-    .max(128),
-  newPassword: z
-    .string()
-    .min(12, "New password must be at least 12 characters")
-    .max(128, "New password must be at most 128 characters"),
-  confirmNewPassword: z.string(),
-}).refine((data) => data.newPassword === data.confirmNewPassword, {
-  message: "Passwords do not match",
-  path: ["confirmNewPassword"],
-}).refine((data) => data.currentPassword !== data.newPassword, {
-  message: "New password must be different from current password",
-  path: ["newPassword"],
-});
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required").max(128),
+    newPassword: z
+      .string()
+      .min(12, "New password must be at least 12 characters")
+      .max(128, "New password must be at most 128 characters"),
+    confirmNewPassword: z.string(),
+  })
+  .refine((data) => data.newPassword === data.confirmNewPassword, {
+    message: "Passwords do not match",
+    path: ["confirmNewPassword"],
+  })
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: "New password must be different from current password",
+    path: ["newPassword"],
+  });
 
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 

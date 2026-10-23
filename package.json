@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
+    "dev": "next dev --webpack --hostname 127.0.0.1",
+    "build": "next build --webpack",
+    "start": "next start --hostname 127.0.0.1",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
@@ -14,34 +14,56 @@
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "node scripts/test-e2e.mjs",
+    "db:deploy": "prisma migrate deploy",
+    "db:validate": "prisma validate",
+    "env:init": "node scripts/init-env.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:startup": "node scripts/verify-startup.mjs",
+    "auth:recover": "node scripts/recover-owner.mjs",
+    "test:integration": "node scripts/test-integration.mjs",
+    "test:storage": "node scripts/test-storage.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1155.0",
+    "@aws-sdk/lib-storage": "3.1155.0",
+    "@prisma/client": "6.19.3",
+    "argon2": "0.43.1",
+    "bullmq": "5.81.5",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "ioredis": "5.11.1",
+    "lucide-react": "0.511.0",
     "next": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "@prisma/client": "^6.19.0",
-    "argon2": "^0.43.0",
-    "zod": "^3.25.0",
-    "minio": "^8.0.0",
-    "bullmq": "^5.0.0",
-    "ioredis": "^5.6.0",
-    "lucide-react": "^0.511.0",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^3.0.0"
+    "server-only": "0.0.1",
+    "tailwind-merge": "3.7.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
-    "@types/node": "^22",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "9.39.5",
     "eslint-config-next": "16.4.2",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "prisma": "^6.19.0",
-    "vitest": "^3.2.0",
-    "@playwright/test": "^1.52.0"
+    "prettier": "3.6.2",
+    "prisma": "6.19.3",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  },
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
+  },
+  "packageManager": "npm@11.12.1",
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.0"
+    }
   }
 }

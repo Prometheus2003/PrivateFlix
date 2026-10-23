@@ -35,13 +35,13 @@ export async function GET(request: NextRequest) {
         },
         activeSessionCount: activeSessions.length,
       },
-      { headers: { "Cache-Control": "private, no-store" } }
+      { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
     if (error instanceof Response) return error;
     return NextResponse.json(
       { error: "An unexpected error occurred" },
-      { status: 500, headers: { "Cache-Control": "private, no-store" } }
+      { status: 500, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 }

@@ -1,3 +1,4 @@
+import { assertSameOrigin } from "@/lib/auth/http";
 /**
  * POST /api/auth/logout
  *
@@ -15,6 +16,7 @@ import { logAuditEvent, AuditAction } from "@/lib/auth/audit";
 
 export async function POST(request: NextRequest) {
   try {
+    assertSameOrigin(request);
     const { user, session } = await requireAuth(request);
 
     // Revoke the session in the database
@@ -34,23 +36,24 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { message: "Logged out successfully" },
-      { headers: { "Cache-Control": "private, no-store" } }
+      { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
     // If requireAuth threw a 401 Response, return it directly
+    if (error instanceof Response && error.status !== 401) return error;
     if (error instanceof Response) {
       // Already logged out or invalid session — clear cookie anyway
       await clearSessionCookie();
       return NextResponse.json(
         { message: "Logged out" },
-        { headers: { "Cache-Control": "private, no-store" } }
+        { headers: { "Cache-Control": "private, no-store" } },
       );
     }
 
     console.error("[LOGOUT] Error:", error);
     return NextResponse.json(
       { error: "An unexpected error occurred" },
-      { status: 500, headers: { "Cache-Control": "private, no-store" } }
+      { status: 500, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 }

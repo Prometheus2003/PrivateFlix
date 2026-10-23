@@ -56,7 +56,7 @@ export interface StorageAdapter {
   putObject(
     key: string,
     body: Readable | Buffer,
-    options: PutObjectOptions
+    options: PutObjectOptions,
   ): Promise<void>;
 
   /**
@@ -91,10 +91,7 @@ export interface StorageAdapter {
    * Initiate a multipart upload for large files.
    * Returns an upload ID to be used with uploadPart/completeMultipartUpload.
    */
-  createMultipartUpload(
-    key: string,
-    contentType: string
-  ): Promise<string>;
+  createMultipartUpload(key: string, contentType: string): Promise<string>;
 
   /**
    * Upload a single part of a multipart upload.
@@ -104,7 +101,7 @@ export interface StorageAdapter {
     key: string,
     uploadId: string,
     partNumber: number,
-    body: Buffer
+    body: Buffer,
   ): Promise<string>;
 
   /**
@@ -113,7 +110,7 @@ export interface StorageAdapter {
   completeMultipartUpload(
     key: string,
     uploadId: string,
-    parts: PartInfo[]
+    parts: PartInfo[],
   ): Promise<void>;
 
   /**

@@ -32,12 +32,14 @@ export async function logAuditEvent(event: AuditEventInput): Promise<void> {
         resourceType: event.resourceType ?? null,
         resourceId: event.resourceId ?? null,
         ipAddress: event.ipAddress ?? null,
-        details: event.details ? (event.details as Prisma.InputJsonValue) : undefined,
+        details: event.details
+          ? (event.details as Prisma.InputJsonValue)
+          : undefined,
       },
     });
-  } catch (error) {
+  } catch {
     // Log to console but don't throw — audit failure must not break auth flow
-    console.error("[AUDIT] Failed to log event:", event.action, error);
+    console.error("[AUDIT] Failed to log event:", event.action);
   }
 }
 

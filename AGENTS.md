@@ -11,7 +11,7 @@
 
 ## Architecture Overview
 
-- **Framework:** Next.js 15 (App Router) with TypeScript strict mode
+- **Framework:** Next.js 16 (App Router) with TypeScript strict mode
 - **Database:** PostgreSQL 16 via Prisma 6 ORM
 - **Object Storage:** MinIO (S3-compatible, private bucket, no public access)
 - **Job Queue:** BullMQ + Redis
@@ -22,6 +22,7 @@
 ## Critical Security Rules
 
 ### NEVER do these:
+
 1. **NEVER** expose storage credentials or internal object keys to the client
 2. **NEVER** create public presigned URLs for media
 3. **NEVER** store passwords or session tokens in localStorage/sessionStorage
@@ -36,6 +37,7 @@
 12. **NEVER** commit `.env` files, credentials, or secrets to version control
 
 ### ALWAYS do these:
+
 1. **ALWAYS** call `requireAuth()` at the start of every protected API route
 2. **ALWAYS** verify `resource.ownerId === user.id` before returning any resource
 3. **ALWAYS** validate input with Zod schemas before processing
@@ -52,6 +54,7 @@
 ## Coding Conventions
 
 ### TypeScript
+
 - Strict mode enabled (`"strict": true`)
 - No `any` types — use `unknown` and narrow
 - Prefer `interface` for object shapes, `type` for unions
@@ -59,6 +62,7 @@
 - Use Zod schemas for runtime validation, infer types with `z.infer<>`
 
 ### File Organization
+
 - Server-only code in `src/lib/` — never import in client components
 - Client components use `'use client'` directive
 - API routes in `src/app/api/` using Next.js Route Handlers
@@ -66,6 +70,7 @@
 - Custom hooks in `src/hooks/`
 
 ### API Routes
+
 ```typescript
 // Standard pattern for protected API routes
 export async function GET(request: NextRequest) {
@@ -77,6 +82,7 @@ export async function GET(request: NextRequest) {
 ```
 
 ### Database Queries
+
 - Always include `ownerId` in WHERE clauses for user-owned data
 - Use transactions for multi-step operations
 - Use `select` to limit returned fields
@@ -84,12 +90,14 @@ export async function GET(request: NextRequest) {
 - Index frequently queried columns
 
 ### Error Handling
+
 - Use consistent error response format: `{ error: string, code?: string }`
 - Return appropriate HTTP status codes
 - Never expose stack traces in production
 - Log errors server-side with context (but not secrets)
 
 ### Component Conventions
+
 - Use shadcn/ui as the component base
 - Dark theme with configurable accent color
 - All interactive elements need keyboard accessibility
@@ -99,12 +107,14 @@ export async function GET(request: NextRequest) {
 - Use toast notifications for success/error feedback
 
 ## Environment Variables
+
 - Validated at startup with Zod (`src/lib/validation/env.ts`)
 - Development defaults in `.env.example`
 - Production values in `.env` (never committed)
 - Access via validated config object, not raw `process.env`
 
 ## Testing Strategy
+
 - **Unit tests (Vitest):** Auth logic, validation, storage adapter, media processing
 - **Integration tests (Vitest):** API routes with real database
 - **E2E tests (Playwright):** Full user flows through the browser
@@ -112,6 +122,7 @@ export async function GET(request: NextRequest) {
 - Never claim a test passed without executing it
 
 ## Phase Workflow
+
 1. Check `PROJECT_STATUS.md` for current state
 2. Work on the current phase only
 3. Create/modify files incrementally
@@ -120,6 +131,7 @@ export async function GET(request: NextRequest) {
 6. Get approval before moving to the next phase
 
 ## Docker Services (Development)
+
 ```
 PostgreSQL: localhost:5432
 MinIO:      localhost:9000 (API), localhost:9001 (Console)
@@ -128,9 +140,20 @@ App:        localhost:3000
 ```
 
 ## Key Files to Check
+
 - `prisma/schema.prisma` — Database schema
 - `src/lib/auth/require-auth.ts` — Central auth check
 - `src/lib/storage/adapter.ts` — Storage interface
 - `src/lib/validation/env.ts` — Environment validation
 - `docker-compose.yml` — Service configuration
 - `.env.example` — Required environment variables
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

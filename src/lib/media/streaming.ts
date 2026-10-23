@@ -41,7 +41,7 @@ interface ParsedRange {
  */
 export function parseRangeHeader(
   rangeHeader: string | null,
-  fileSize: number
+  fileSize: number,
 ): ParsedRange | null {
   if (!rangeHeader) return null;
 
@@ -94,7 +94,7 @@ export function parseRangeHeader(
 export async function createStreamingResponse(
   request: NextRequest,
   storage: StorageAdapter,
-  options: StreamOptions
+  options: StreamOptions,
 ): Promise<NextResponse> {
   const { storageKey, contentType, fileSize, filename, download } = options;
 
@@ -164,7 +164,7 @@ export async function createStreamingResponse(
     console.error("[STREAM] Error streaming object:", storageKey, error);
     return NextResponse.json(
       { error: "Failed to stream media" },
-      { status: 500, headers: { "Cache-Control": "private, no-store" } }
+      { status: 500, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 }
@@ -176,7 +176,7 @@ export async function createStreamingResponse(
  * Required because NextResponse expects a Web ReadableStream.
  */
 function nodeReadableToWebReadable(
-  nodeStream: import("node:stream").Readable
+  nodeStream: import("node:stream").Readable,
 ): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {

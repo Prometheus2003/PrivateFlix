@@ -1,0 +1,11 @@
+node_modules
+.next
+coverage
+package-lock.json
+prisma/migrations
+test-results
+playwright-report
+.env*
+.next-verify
+
+.next-security

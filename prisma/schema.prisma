@@ -25,6 +25,7 @@ model AppSetting {
 // ─── User (single owner) ───────────────────────────────────
 // Only one row should ever exist. Enforced by setup logic.
 model User {
+  ownerSlot         Int      @unique @default(1)
   id                String   @id @default(uuid()) @db.Uuid
   email             String   @unique
   username          String   @unique
@@ -334,4 +335,11 @@ model AuditEvent {
   @@index([action])
   @@index([createdAt])
   @@map("audit_events")
+}
+
+model AuthThrottle {
+  scope String @id
+  attempts Int
+  expiresAt DateTime
+  @@map("auth_throttles")
 }

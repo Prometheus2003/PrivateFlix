@@ -63,3 +63,10 @@ docker-data/
 # test results
 /test-results/
 /playwright-report/
+
+# all secret environment variants
+.env.*
+!.env.example
+/.next-verify/
+
+.next-security/

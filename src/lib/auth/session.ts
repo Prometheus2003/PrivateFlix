@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+import { getEnv } from "@/lib/validation/env";
 /**
  * Server-side session management.
  * Sessions are stored in PostgreSQL. Session tokens are SHA-256 hashed before storage.
@@ -43,13 +45,16 @@ interface CreateSessionOptions {
  * Create a new server-side session.
  * Returns the raw token (to be set as cookie) and the session record.
  */
-export async function createSession(options: CreateSessionOptions) {
+export async function createSession(
+  options: CreateSessionOptions,
+  db: Prisma.TransactionClient = prisma,
+) {
   const {
     userId,
     ipAddress,
     userAgent,
-    idleTimeoutSeconds = 86400, // 24h
-    absoluteTimeoutSeconds = 604800, // 7d
+    idleTimeoutSeconds = getEnv().SESSION_IDLE_TIMEOUT, // 24h
+    absoluteTimeoutSeconds = getEnv().SESSION_ABSOLUTE_TIMEOUT, // 7d
   } = options;
 
   const rawToken = generateSessionToken();
@@ -58,7 +63,7 @@ export async function createSession(options: CreateSessionOptions) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + absoluteTimeoutSeconds * 1000);
 
-  const session = await prisma.session.create({
+  const session = await db.session.create({
     data: {
       userId,
       tokenHash,
@@ -77,10 +82,10 @@ export async function createSession(options: CreateSessionOptions) {
  */
 export async function setSessionCookie(
   rawToken: string,
-  maxAgeSeconds: number = 604800
+  maxAgeSeconds: number = getEnv().SESSION_ABSOLUTE_TIMEOUT,
 ): Promise<void> {
   const cookieStore = await cookies();
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction = getEnv().NODE_ENV === "production";
 
   cookieStore.set(SESSION_COOKIE_NAME, rawToken, {
     httpOnly: true,
@@ -107,49 +112,34 @@ export async function getSessionToken(): Promise<string | null> {
  */
 export async function validateSession(
   rawToken: string,
-  idleTimeoutSeconds: number = 86400
+  idleTimeoutSeconds: number = getEnv().SESSION_IDLE_TIMEOUT,
 ) {
+  if (!/^[a-f0-9]{64}$/.test(rawToken)) return null;
   const tokenHash = hashSessionToken(rawToken);
-
-  const session = await prisma.session.findUnique({
-    where: { tokenHash },
-    include: { user: true },
-  });
-
-  if (!session) {
-    return null;
-  }
-
-  // Check if revoked
-  if (session.revokedAt) {
-    return null;
-  }
-
   const now = new Date();
-
-  // Check absolute expiry
-  if (now > session.expiresAt) {
-    return null;
-  }
-
-  // Check idle timeout
-  const idleDeadline = new Date(
-    session.lastActivityAt.getTime() + idleTimeoutSeconds * 1000
-  );
-  if (now > idleDeadline) {
-    return null;
-  }
-
-  // Update last activity (but don't await — fire and forget for performance)
-  prisma.session
-    .update({
-      where: { id: session.id },
-      data: { lastActivityAt: now },
-    })
-    .catch(() => {
-      // Non-critical — log but don't fail the request
-    });
-
+  const valid = {
+    tokenHash,
+    revokedAt: null,
+    expiresAt: { gt: now },
+    lastActivityAt: { gt: new Date(now.getTime() - idleTimeoutSeconds * 1000) },
+  };
+  const touched = await prisma.session.updateMany({
+    where: valid,
+    data: { lastActivityAt: now },
+  });
+  if (touched.count !== 1) return null;
+  const session = await prisma.session.findFirst({
+    where: valid,
+    select: {
+      id: true,
+      userId: true,
+      createdAt: true,
+      expiresAt: true,
+      lastActivityAt: true,
+      user: { select: { id: true, email: true, username: true } },
+    },
+  });
+  if (!session) return null;
   return {
     session: {
       id: session.id,
@@ -179,8 +169,11 @@ export async function revokeSession(sessionId: string): Promise<void> {
 /**
  * Revoke ALL sessions for a user (logout everywhere / password change).
  */
-export async function revokeAllSessions(userId: string): Promise<number> {
-  const result = await prisma.session.updateMany({
+export async function revokeAllSessions(
+  userId: string,
+  db: Prisma.TransactionClient = prisma,
+): Promise<number> {
+  const result = await db.session.updateMany({
     where: {
       userId,
       revokedAt: null,
@@ -208,6 +201,9 @@ export async function getActiveSessions(userId: string) {
       userId,
       revokedAt: null,
       expiresAt: { gt: now },
+      lastActivityAt: {
+        gt: new Date(now.getTime() - getEnv().SESSION_IDLE_TIMEOUT * 1000),
+      },
     },
     select: {
       id: true,
@@ -218,6 +214,7 @@ export async function getActiveSessions(userId: string) {
       userAgent: true,
     },
     orderBy: { lastActivityAt: "desc" },
+    take: 100,
   });
 }
 
@@ -227,10 +224,7 @@ export async function getActiveSessions(userId: string) {
 export async function cleanExpiredSessions(): Promise<number> {
   const result = await prisma.session.deleteMany({
     where: {
-      OR: [
-        { expiresAt: { lt: new Date() } },
-        { revokedAt: { not: null } },
-      ],
+      OR: [{ expiresAt: { lt: new Date() } }, { revokedAt: { not: null } }],
     },
   });
   return result.count;

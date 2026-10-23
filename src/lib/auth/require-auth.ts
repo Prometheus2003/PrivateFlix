@@ -1,3 +1,4 @@
+import { getEnv } from "@/lib/validation/env";
 /**
  * Central authentication check for protected routes.
  * Call this at the start of EVERY protected API route and server component.
@@ -45,20 +46,17 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult> {
   const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (!sessionToken) {
-    throw new Response(
-      JSON.stringify({ error: "Authentication required" }),
-      {
-        status: 401,
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "private, no-store",
-        },
-      }
-    );
+    throw new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "private, no-store",
+      },
+    });
   }
 
   // Read idle timeout from env (with fallback)
-  const idleTimeout = parseInt(process.env.SESSION_IDLE_TIMEOUT ?? "86400", 10);
+  const idleTimeout = getEnv().SESSION_IDLE_TIMEOUT;
 
   const result = await validateSession(sessionToken, idleTimeout);
 
@@ -71,7 +69,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult> {
           "Content-Type": "application/json",
           "Cache-Control": "private, no-store",
         },
-      }
+      },
     );
   }
 
@@ -89,21 +87,17 @@ export async function isAppInitialized(): Promise<boolean> {
     where: { key: "appInitialized" },
   });
 
-  return setting?.value === "true";
+  return setting?.value === "true" || (await prisma.user.count()) > 0;
 }
 
 /**
  * Get the client IP address from the request.
  * Handles X-Forwarded-For from reverse proxies.
  */
-export function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    // Take the first IP (client) from the chain
-    return forwarded.split(",")[0].trim();
-  }
-  // Fallback — Next.js doesn't expose raw socket IP easily
-  return request.headers.get("x-real-ip") ?? "unknown";
+export function getClientIp(_request: NextRequest): string {
+  void _request;
+  // Forwarded headers are untrusted until an explicit proxy contract exists.
+  return "unknown";
 }
 
 /**

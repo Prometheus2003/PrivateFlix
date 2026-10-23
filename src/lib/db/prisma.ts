@@ -1,3 +1,4 @@
+import "server-only";
 /**
  * Prisma client singleton.
  * Prevents multiple client instances in development (hot-reload).
@@ -14,10 +15,7 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["query", "error", "warn"]
-        : ["error"],
+    log: [], // Avoid credential-bearing query inputs in ORM diagnostics.
   });
 
 if (process.env.NODE_ENV !== "production") {

@@ -17,15 +17,15 @@ export async function GET() {
 
     return NextResponse.json(
       { initialized },
-      { headers: { "Cache-Control": "private, no-store" } }
+      { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch {
     return NextResponse.json(
-      { initialized: false },
+      { error: "Initialization status unavailable" },
       {
         status: 500,
         headers: { "Cache-Control": "private, no-store" },
-      }
+      },
     );
   }
 }
