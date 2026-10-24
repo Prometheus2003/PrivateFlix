@@ -87,6 +87,46 @@ describe("S3 adapter transport contract", () => {
       ),
     ).toHaveLength(1);
   });
+  it("accepts resource reordering without weakening the policy", async () => {
+    const policy = privateBucketPolicy("privateflix-test");
+    policy.Statement[0].Resource.reverse();
+    send.mockImplementation(async (command) =>
+      command instanceof GetBucketPolicyCommand
+        ? { $metadata: {}, Policy: JSON.stringify(policy) }
+        : { $metadata: {}, ContentLength: 10 },
+    );
+    expect(
+      (await createS3StorageAdapter(client).getObjectMetadata("key"))
+        .contentLength,
+    ).toBe(10);
+  });
+  it.each([
+    "grant",
+    "resource",
+    "condition",
+    "extra-statement",
+    "duplicate-resource",
+  ])("rejects a changed policy: %s", async (change) => {
+    const policy = privateBucketPolicy("privateflix-test");
+    if (change === "grant") policy.Statement[0].Effect = "Allow";
+    if (change === "resource") policy.Statement[0].Resource.pop();
+    if (change === "condition")
+      policy.Statement[0].Condition.StringEquals["aws:principaltype"] = [
+        "User",
+      ];
+    if (change === "extra-statement")
+      policy.Statement.push({ ...policy.Statement[0], Effect: "Allow" });
+    if (change === "duplicate-resource")
+      policy.Statement[0].Resource.push(policy.Statement[0].Resource[0]);
+    send.mockImplementation(async (command) =>
+      command instanceof GetBucketPolicyCommand
+        ? { $metadata: {}, Policy: JSON.stringify(policy) }
+        : { $metadata: {} },
+    );
+    await expect(
+      createS3StorageAdapter(client).getObjectMetadata("key"),
+    ).rejects.toThrow("policy verification");
+  });
   it("retries failed initialization on the next operation", async () => {
     const adapter = createS3StorageAdapter(client);
     send.mockRejectedValueOnce(new Error("Unavailable"));

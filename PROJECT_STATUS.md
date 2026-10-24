@@ -1,9 +1,9 @@
 # PrivateFlix — Project Status
 
-Updated: 2026-10-23.
+Updated: 2026-10-25.
 Current phase: Phase 3 backend implemented and tested; Phase 4 ingestion in progress.
 
-The user authorized fixes and continued phase-by-phase development despite the earlier environment blockers. The active checkout is work/PrivateFlix in the new workspace. Previous uncommitted changes have been preserved.
+The user authorized fixes and continued phase-by-phase development despite the earlier environment blockers. The active checkout is work/PrivateFlix in the new workspace. The tested security and storage work was committed and pushed to main as 123ee4e.
 
 The production build, 91 unit/database tests, 12 production Chromium/API tests, and production startup checks passed. Windows sandbox EPERM was resolved for verification by approved execution. Docker engine access is also available.
 
@@ -13,4 +13,6 @@ The MinIO image built successfully and three live adapter/privacy tests passed a
 
 See [security/storage report](docs/SECURITY_STORAGE_PROGRESS.md) for behavior, test scope, setup/recovery and remaining work. Earlier reports are historical and their build/Docker/auth status is superseded here.
 
-No changes were pushed to GitHub.
+The next Phase 4 increment adds authenticated, paginated upload status, durable multipart receipts, and bounded chunk integrity validation. The additive migration and 121 unit/database tests passed on the isolated PostgreSQL test database. See [resumable upload progress](docs/RESUMABLE_UPLOAD_PROGRESS.md). Multipart mutation endpoints and the resume UI are not implemented yet; the new chunk reader is a tested building block, not an enabled resumable upload flow.
+
+Latest verification: production build, typecheck, lint, formatting, 121 unit/database tests, 3 live MinIO tests, and 12 production browser/API tests passed (136 total). Fixed intermittent bucket policy verification caused by resource ordering while retaining fail-closed checks for changed permissions.

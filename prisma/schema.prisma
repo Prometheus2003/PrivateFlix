@@ -272,15 +272,32 @@ model Upload {
   totalBytes      BigInt       @default(0)
   errorMessage    String?
   storageUploadId String?      // Multipart upload ID from S3
+  partSize        Int?         // Null for single-request uploads; immutable for multipart uploads
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
   owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   media Media? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  parts UploadPart[]
 
   @@index([ownerId])
   @@index([status])
   @@map("uploads")
+}
+
+// Internal receipts only. Ownership is always checked through the parent upload.
+model UploadPart {
+  uploadId   String   @db.Uuid
+  partNumber Int
+  byteLength Int
+  checksum   String   @db.VarChar(64)
+  etag       String   @db.VarChar(1024)
+  createdAt  DateTime @default(now())
+
+  upload Upload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@id([uploadId, partNumber])
+  @@map("upload_parts")
 }
 
 // ─── ProcessingJob ──────────────────────────────────────────

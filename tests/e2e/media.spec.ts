@@ -53,6 +53,18 @@ test("production upload streams beyond the proxy buffer limit into private MinIO
     expect(body.media.fileSize).toBe(data.length);
     expect(body.media.processingStatus).toBe("UPLOADED");
     expect(body.media).not.toHaveProperty("storageKey");
+    const progress = await request.get("/api/media/upload/" + body.uploadId, {
+      headers: { Cookie: "privateflix_session=" + token },
+    });
+    expect(progress.status()).toBe(200);
+    expect(progress.headers()["cache-control"]).toContain("no-store");
+    const progressBody = await progress.json();
+    expect(progressBody.upload.bytesUploaded).toBe(data.length);
+    expect(progressBody.upload.status).toBe("UPLOADED");
+    expect(progressBody.upload).not.toHaveProperty("storageUploadId");
+    expect(
+      (await request.get("/api/media/upload/" + body.uploadId)).status(),
+    ).toBe(401);
     const stored = await db.media.findUniqueOrThrow({
       where: { id: body.media.id },
     });

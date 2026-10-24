@@ -36,6 +36,7 @@ vi.mock("@/lib/storage", () => ({
 import { prisma } from "@/lib/db/prisma";
 import { POST as upload } from "@/app/api/media/upload/route";
 import { GET as list } from "@/app/api/media/route";
+import { GET as progress } from "@/app/api/media/upload/[id]/route";
 import { storage } from "@/lib/storage";
 const enabled = process.env.PRIVATEFLIX_SECURITY_TEST === "1";
 const png = Buffer.concat([
@@ -208,6 +209,114 @@ describe.skipIf(!enabled)(
         (await list(new NextRequest("https://privateflix.test/api/media")))
           .status,
       ).toBe(401);
+    });
+    it("returns authenticated upload progress without internal storage identifiers", async () => {
+      const uploaded = await (await upload(request())).json();
+      const context = { params: Promise.resolve({ id: uploaded.uploadId }) };
+      const url =
+        "https://privateflix.test/api/media/upload/" + uploaded.uploadId;
+      expect((await progress(new NextRequest(url), context)).status).toBe(401);
+      const response = await progress(
+        new NextRequest(url, {
+          headers: { cookie: "privateflix_session=" + token },
+        }),
+        context,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      const result = await response.json();
+      expect(result.upload.bytesUploaded).toBe(png.length);
+      expect(result.upload.status).toBe("UPLOADED");
+      expect(result.upload).not.toHaveProperty("storageUploadId");
+      expect(result.upload).not.toHaveProperty("ownerId");
+      expect(JSON.stringify(result)).not.toContain(state.key);
+      expect(
+        (
+          await progress(
+            new NextRequest(url + "?page=101", {
+              headers: { cookie: "privateflix_session=" + token },
+            }),
+            context,
+          )
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await progress(
+            new NextRequest(url, {
+              headers: { cookie: "privateflix_session=" + token },
+            }),
+            {
+              params: Promise.resolve({
+                id: "00000000-0000-4000-8000-000000000000",
+              }),
+            },
+          )
+        ).status,
+      ).toBe(404);
+    });
+    it("persists unique part receipts, paginates them, and cascades cleanup", async () => {
+      const uploaded = await (await upload(request())).json();
+      await prisma.upload.update({
+        where: { id: uploaded.uploadId },
+        data: { partSize: 8388608 },
+      });
+      const receipt = {
+        uploadId: uploaded.uploadId,
+        partNumber: 1,
+        byteLength: 8,
+        checksum: "a".repeat(64),
+        etag: "internal-etag",
+      };
+      await prisma.uploadPart.createMany({
+        data: Array.from({ length: 101 }, (_, i) => ({
+          ...receipt,
+          partNumber: i + 1,
+        })),
+      });
+      await expect(
+        prisma.uploadPart.create({ data: receipt }),
+      ).rejects.toThrow();
+      await expect(
+        prisma.uploadPart.create({ data: { ...receipt, partNumber: 0 } }),
+      ).rejects.toThrow();
+      await expect(
+        prisma.uploadPart.create({
+          data: { ...receipt, partNumber: 102, byteLength: 8388609 },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        prisma.uploadPart.create({
+          data: { ...receipt, partNumber: 102, checksum: "bad" },
+        }),
+      ).rejects.toThrow();
+      const url =
+        "https://privateflix.test/api/media/upload/" + uploaded.uploadId;
+      const context = { params: Promise.resolve({ id: uploaded.uploadId }) };
+      const first = await (
+        await progress(
+          new NextRequest(url, {
+            headers: { cookie: "privateflix_session=" + token },
+          }),
+          context,
+        )
+      ).json();
+      expect(first.upload.parts).toHaveLength(100);
+      expect(first.hasMore).toBe(true);
+      expect(JSON.stringify(first)).not.toContain("internal-etag");
+      const second = await (
+        await progress(
+          new NextRequest(url + "?page=2", {
+            headers: { cookie: "privateflix_session=" + token },
+          }),
+          context,
+        )
+      ).json();
+      expect(second.upload.parts).toHaveLength(1);
+      expect(second.upload.parts[0].partNumber).toBe(101);
+      expect(second.hasMore).toBe(false);
+      await prisma.upload.delete({ where: { id: uploaded.uploadId } });
+      expect(await prisma.uploadPart.count()).toBe(0);
     });
   },
 );

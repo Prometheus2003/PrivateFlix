@@ -49,6 +49,32 @@ export function privateBucketPolicy(bucket: string) {
     ],
   };
 }
+// Resource arrays are unordered sets in bucket policies. MinIO can serialize
+// its internal set in a different order on each read. Preserve every other
+// field so additional grants, resources, and changed conditions still fail closed.
+function normalizePolicyResources(policy: unknown): unknown {
+  if (
+    typeof policy !== "object" ||
+    policy === null ||
+    !("Statement" in policy) ||
+    !Array.isArray(policy.Statement)
+  )
+    return policy;
+  return {
+    ...policy,
+    Statement: policy.Statement.map((statement: unknown) => {
+      if (
+        typeof statement !== "object" ||
+        statement === null ||
+        !("Resource" in statement) ||
+        !Array.isArray(statement.Resource) ||
+        !statement.Resource.every((value: unknown) => typeof value === "string")
+      )
+        return statement;
+      return { ...statement, Resource: [...statement.Resource].sort() };
+    }),
+  };
+}
 function metadata(result: {
   ContentType?: string;
   ContentLength?: number;
@@ -129,7 +155,10 @@ export function createS3StorageAdapter(
     const verified = await c.send(new GetBucketPolicyCommand({ Bucket }));
     if (
       !verified.Policy ||
-      !isDeepStrictEqual(JSON.parse(verified.Policy), policy)
+      !isDeepStrictEqual(
+        normalizePolicyResources(JSON.parse(verified.Policy)),
+        normalizePolicyResources(policy),
+      )
     )
       throw new Error("Private bucket policy verification failed");
   }
