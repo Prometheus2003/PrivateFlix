@@ -71,6 +71,61 @@ test("production upload streams beyond the proxy buffer limit into private MinIO
     expect(stored.checksum).toBe(
       createHash("sha256").update(data).digest("hex"),
     );
+    const multipart = await request.post("/api/media/upload/start", {
+      headers: { Origin: headers.Origin, Cookie: headers.Cookie },
+      data: {
+        filename: "resumed.png",
+        mime: "image/png",
+        totalBytes: data.length,
+        checksum: createHash("sha256").update(data).digest("hex"),
+      },
+    });
+    expect(multipart.status()).toBe(201);
+    const started = await multipart.json();
+    const base = "/api/media/upload/" + started.uploadId;
+    for (const number of [2, 1, 1]) {
+      const chunk = data.subarray(
+        (number - 1) * started.partSize,
+        number * started.partSize,
+      );
+      const sent = await request.put(base + "/parts/" + number, {
+        headers: {
+          Origin: headers.Origin,
+          Cookie: headers.Cookie,
+          "Content-Type": "application/octet-stream",
+          "X-Part-Sha256": createHash("sha256").update(chunk).digest("hex"),
+        },
+        data: chunk,
+      });
+      expect(sent.status()).toBe(200);
+    }
+    const resumed = await request.get(base, {
+      headers: { Cookie: headers.Cookie },
+    });
+    const resumedBody = await resumed.json();
+    expect(resumedBody.upload.bytesUploaded).toBe(data.length);
+    expect(resumedBody.upload.parts).toHaveLength(2);
+    for (let retry = 0; retry < 2; retry++) {
+      const completed = await request.post(base + "/complete", {
+        headers: { Origin: headers.Origin, Cookie: headers.Cookie },
+      });
+      expect(completed.status()).toBe(200);
+    }
+    const completedMedia = await db.media.findUniqueOrThrow({
+      where: { id: started.mediaId },
+    });
+    expect(completedMedia.checksum).toBe(stored.checksum);
+    expect(
+      (
+        await fetch(
+          process.env.S3_ENDPOINT +
+            "/" +
+            process.env.S3_BUCKET +
+            "/" +
+            completedMedia.storageKey,
+        )
+      ).status,
+    ).toBe(403);
     expect(
       (
         await fetch(

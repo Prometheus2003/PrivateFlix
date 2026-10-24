@@ -13,6 +13,7 @@ if (!database || new URL(database).pathname !== "/privateflix_security_test") {
       "run",
       "tests/integration/security.test.ts",
       "tests/integration/upload.test.ts",
+      "tests/integration/multipart.test.ts",
     ],
     {
       stdio: "inherit",

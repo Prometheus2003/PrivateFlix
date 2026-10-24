@@ -273,6 +273,10 @@ model Upload {
   errorMessage    String?
   storageUploadId String?      // Multipart upload ID from S3
   partSize        Int?         // Null for single-request uploads; immutable for multipart uploads
+  expectedChecksum String?
+  completionStarted Boolean @default(false)
+  operationToken String? @db.Uuid
+  operationExpiresAt DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -291,7 +295,7 @@ model UploadPart {
   partNumber Int
   byteLength Int
   checksum   String   @db.VarChar(64)
-  etag       String   @db.VarChar(1024)
+  etag       String?  @db.VarChar(1024)
   createdAt  DateTime @default(now())
 
   upload Upload @relation(fields: [uploadId], references: [id], onDelete: Cascade)

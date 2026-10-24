@@ -34,6 +34,7 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         parts: {
+          where: { etag: { not: null } },
           orderBy: { partNumber: "asc" },
           skip: (page.data - 1) * 100,
           take: 101,
