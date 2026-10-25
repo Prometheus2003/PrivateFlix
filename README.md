@@ -1,10 +1,10 @@
 # PrivateFlix
 
-Self-hosted, single-owner photo and video vault in development. The current UI is a starter; do not deploy it publicly or upload sensitive media yet. Authentication hardening and storage privacy verification are the next implementation gates.
+Self-hosted, single-owner photo and video vault in development. Owner authentication, private uploads, resumable transfers and the library interface are implemented. Production deployment and playback remain unfinished.
 
 ## Current state
 
-Phase 2 adds pinned direct npm dependencies, configuration validation, generated local credentials, initial migrations, Docker build scaffolding and configuration tests. See [PROJECT_STATUS.md](PROJECT_STATUS.md) and [Phase 2 evidence](docs/PHASE_2_FOUNDATION.md) for actual results and limitations. [Architecture and remaining phases](docs/PHASE_1_REVIEW.md) describe the full target.
+See [PROJECT_STATUS.md](PROJECT_STATUS.md) for current results and remaining phases, [Owner workflow](docs/OWNER_UPLOAD_WORKFLOW.md) for uploading, and [Media processing](docs/MEDIA_PROCESSING.md) for the separate FFmpeg worker and authenticated thumbnails. [Architecture and remaining phases](docs/PHASE_1_REVIEW.md) describe the full target.
 
 ## Local setup
 
@@ -21,7 +21,7 @@ npm run dev
 
 Open http://localhost:3000. The app and backing service ports bind only to loopback. `env:init` refuses to overwrite an existing `.env`; on this working checkout a local configuration has already been generated. It contains unique development-only database/storage/Redis/session secrets and must stay untracked. `.env.example` contains placeholders only. On Windows restrict the `.env` ACL to your account; POSIX mode 0600 is requested by the generator but does not enforce Windows ACLs.
 
-The MinIO development image builds the upstream final security-release source at a pinned revision. Building requires internet access and can take several minutes. Community MinIO is archived; the development container is not an endorsement for production. Phase 4 must verify private storage and choose/verify a maintained production S3-compatible backend. Development uses MinIO root credentials; production must provision a separate least-privilege identity.
+The MinIO development image builds the upstream final security-release source at a pinned revision. Building requires internet access and can take several minutes. Community MinIO is archived; production backend selection remains deployment work. Anonymous object access is denied and tested. Development uses MinIO root credentials; production must provision a separate least-privilege identity.
 
 The Compose stack does not run the app: use npm run dev. Keep Docker running for database-backed routes. No account or media is seeded. Redis uses a generated password, persistence and noeviction. Host ports must be free; do not remove an existing user's volumes to resolve conflicts.
 
@@ -43,13 +43,13 @@ npm test
 npm run build
 ```
 
-Configuration tests do not replace authentication, storage or end-to-end security tests. Those suites remain to be implemented. Seven foundation browser/API smoke tests are configured. See docs/VERIFICATION_2026-10-22.md for the latest results and limitations. After building and configuring a test database, install Chromium with npx playwright install chromium, then run npm run test:startup and npm run test:e2e. Production is the default; PRIVATEFLIX_E2E_MODE=development selects development smoke testing. These tests do not cover unfinished media features or the complete security model.
+Database tests require an explicitly configured disposable database named `privateflix_security_test`; they reset test records. Run `npm run test:integration` for those checks. `npm run test:storage` provisions disposable MinIO; with `PRIVATEFLIX_SECURITY_TEST=1` and the test database configured it also runs the production browser suite. The [processing verification runner](docs/MEDIA_PROCESSING.md) provisions all its own test services. Install Chromium with `npx playwright install chromium` before browser checks. These tests do not cover unfinished playback or production deployment.
 
 ## Build and startup
 
 Local builds use Webpack and normal Next.js output for compatibility with the Windows sandbox. `npm start` binds loopback and requires a valid production configuration, including an HTTPS APP_URL. Use a TLS reverse proxy for actual production transport. `APP_URL` describes the external origin; the proxy may use local HTTP internally. Do not change NODE_ENV to bypass production validation.
 
-Dockerfile has runtime and migrate targets. It opts into standalone Linux packaging, excludes `.env` and media from the build context, runs the app as a non-root user and includes a database-backed health check. Supply secrets only at runtime. Container builds have not yet been verified on this machine. The production Compose/Caddy setup belongs to Phase 9.
+Dockerfile has runtime and migrate targets. It opts into standalone Linux packaging, excludes `.env` and media from the build context, runs the app as a non-root user and includes a database-backed health check. Supply secrets only at runtime. The app container remains unverified; the separate processing worker container has passed live integration tests. The production Compose/Caddy setup belongs to Phase 9.
 
 ```sh
 docker build --target runtime -t privateflix:dev .

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Image from "next/image";
 import {
   Film,
   ImageIcon,
@@ -19,6 +20,7 @@ interface Media {
   type: string;
   fileSize: number;
   processingStatus: string;
+  hasThumbnail: boolean;
 }
 interface Pending {
   id: string;
@@ -667,7 +669,20 @@ export default function LibraryApp({ name }: { name: string }) {
                         : "photo-placeholder")
                     }
                   >
-                    {item.type === "VIDEO" ? (
+                    {item.hasThumbnail ? (
+                      <Image
+                        src={`/api/media/${item.id}/thumbnail`}
+                        alt={item.title}
+                        width={640}
+                        height={640}
+                        unoptimized
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : item.type === "VIDEO" ? (
                       <Film size={36} strokeWidth={1.2} />
                     ) : (
                       <ImageIcon size={36} strokeWidth={1.2} />

@@ -203,7 +203,9 @@ describe.skipIf(!enabled)("resumable upload with isolated PostgreSQL", () => {
     ).toBe(BigInt(bytes.length));
     expect((await mutateMultipart(request(), id, "complete")).status).toBe(200);
     expect((await mutateMultipart(request(), id, "complete")).status).toBe(200);
-    expect(state.object).toEqual(bytes);
+    expect(state.object?.equals(bytes)).toBe(true);
+    await prisma.upload.update({ where: { id }, data: { status: "READY" } });
+    expect((await mutateMultipart(request(), id, "complete")).status).toBe(200);
     expect(
       await prisma.processingJob.count({ where: { type: "METADATA" } }),
     ).toBe(1);

@@ -64,7 +64,7 @@ export const envSchema = z
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),
-    FFMPEG_TIMEOUT: positive.default(600),
+    FFMPEG_TIMEOUT: positive.max(900).default(600),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),

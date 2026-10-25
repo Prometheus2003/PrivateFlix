@@ -248,7 +248,10 @@ export async function mutateMultipart(
       await storage.deleteObject(media.storageKey);
       return json({ uploadId: id, status: "CANCELLED" });
     }
-    if (action === "complete" && upload.status === "UPLOADED")
+    if (
+      action === "complete" &&
+      ["UPLOADED", "PROCESSING", "READY"].includes(upload.status)
+    )
       return json({ uploadId: id, mediaId: media.id, status: "UPLOADED" });
     if (upload.status !== "UPLOADING" || !upload.storageUploadId)
       throw authError(409, "Upload is not accepting data");

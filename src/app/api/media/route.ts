@@ -25,6 +25,10 @@ export async function GET(request: NextRequest) {
         fileSize: true,
         processingStatus: true,
         createdAt: true,
+        thumbnailStorageKey: true,
+        width: true,
+        height: true,
+        duration: true,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * limit,
@@ -32,9 +36,12 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json(
       {
-        media: rows
-          .slice(0, limit)
-          .map((row) => ({ ...row, fileSize: Number(row.fileSize) })),
+        media: rows.slice(0, limit).map(({ thumbnailStorageKey, ...row }) => ({
+          ...row,
+          fileSize: Number(row.fileSize),
+          hasThumbnail:
+            row.processingStatus === "READY" && Boolean(thumbnailStorageKey),
+        })),
         page,
         hasMore: rows.length > limit,
       },

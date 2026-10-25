@@ -329,6 +329,8 @@ model ProcessingJob {
   errorMessage String?
   startedAt    DateTime?
   completedAt  DateTime?
+  leaseToken   String?   @db.Uuid
+  leaseExpiresAt DateTime?
   createdAt    DateTime  @default(now())
 
   media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
@@ -336,6 +338,7 @@ model ProcessingJob {
   @@index([mediaId])
   @@index([status])
   @@map("processing_jobs")
+  @@index([type, status])
 }
 
 // ─── AuditEvent ─────────────────────────────────────────────

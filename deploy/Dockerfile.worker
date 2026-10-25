@@ -1,0 +1,18 @@
+FROM node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci && npm run db:generate
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts/build-worker.mjs ./scripts/build-worker.mjs
+RUN node scripts/build-worker.mjs && npm prune --omit=dev
+FROM node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg openssl ca-certificates && rm -rf /var/lib/apt/lists/* && mkdir /work && chown node:node /work
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+ENV NODE_ENV=production
+USER node
+CMD ["node", "dist/worker.cjs"]

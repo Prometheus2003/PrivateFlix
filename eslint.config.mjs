@@ -13,6 +13,7 @@ const eslintConfig = defineConfig([
     ".next-security/**",
     "out/**",
     "build/**",
+    "dist/**",
     "next-env.d.ts",
   ]),
 ]);
