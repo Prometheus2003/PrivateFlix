@@ -1,6 +1,6 @@
 # Resumable upload API
 
-Implemented 2026-10-25. This supersedes the endpoint backlog in RESUMABLE_UPLOAD_PROGRESS.md. The browser upload UI and automatic orphan cleanup remain unfinished.
+Implemented 2026-10-25. This supersedes the endpoint backlog in RESUMABLE_UPLOAD_PROGRESS.md. The browser upload UI and maintenance of recorded uploads are now implemented; see OWNER_UPLOAD_WORKFLOW.md for current behavior and storage-only orphan limitations.
 
 All operations require the owner's live session cookie. Mutations also require the exact configured APP_URL origin. Responses are private/no-store, and storage keys, multipart IDs, and ETags remain server-side.
 
@@ -20,7 +20,7 @@ The binary routes live below the existing proxy exclusion for `/api/media/upload
 
 ## Remaining reliability work
 
-Cleanup jobs are durable records; the cleanup worker is not implemented yet. Abandoned uploads do not expire automatically and may occupy active-upload slots until cancelled. An interruption between S3 multipart creation and recording its ID can leave orphaned S3 parts; bucket lifecycle/reconciliation must be configured before production deployment. S3 abort races with an already in-flight write also require repeated cleanup. These limitations are not a claim of production readiness.
+Cleanup jobs run automatically while the Node app is running. Eligible multipart uploads expire after 24 hours of inactivity; frozen completion manifests are preserved for retry. See OWNER_UPLOAD_WORKFLOW.md for delays, retry limits, and deployment requirements. An interruption between S3 multipart creation and recording its ID can leave orphaned S3 parts; bucket lifecycle/reconciliation must be configured before production deployment. S3 abort races with an already in-flight write also require repeated cleanup. These limitations are not a claim of production readiness.
 
 ## Validation
 

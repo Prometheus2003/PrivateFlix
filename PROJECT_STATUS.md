@@ -1,18 +1,26 @@
 # PrivateFlix — Project Status
 
 Updated: 2026-10-25.
-Current phase: Phase 3 backend implemented and tested; Phase 4 ingestion in progress.
+Current work: Phase 4 owner upload workflow and cleanup implemented; Phase 5 media processing is next. Production deployment is not yet complete.
 
-The user authorized fixes and continued phase-by-phase development despite the earlier environment blockers. The active checkout is work/PrivateFlix in the new workspace. The tested security and storage work was committed and pushed to main as 123ee4e.
+## Implemented
 
-The production build, 91 unit/database tests, 12 production Chromium/API tests, and production startup checks passed. Windows sandbox EPERM was resolved for verification by approved execution. Docker engine access is also available.
+- Single-owner setup, login/logout, session management, offline recovery, origin protection, durable throttling, nonce CSP, and private API responses.
+- Private S3 storage with verified anonymous-deny policy, streamed uploads, paginated media listing, and authenticated resumable multipart upload APIs.
+- Responsive owner interface with setup/sign-in, library metadata cards, upload progress, pause, resume across reloads, checksum validation, confirmed cancellation, and sign-out. File hashing uses bounded 8 MiB chunks; no auth secrets are stored in browser storage.
+- Automatic maintenance while the Node app is running: expire eligible uploads after 24 hours of inactivity, execute delayed cleanup, recover interrupted jobs, and retry storage failures within bounds. Active uploads and successful media are protected.
+- Zod upgraded to 4.6.7 to fix the reported runtime advisory. Full dependency audit currently has no findings.
 
-Implemented setup locking and single-owner enforcement, CSRF/origin guards, durable throttling, session/password atomicity, session management, offline recovery, and nonce CSP. Replaced the storage SDK, added fail-closed bucket policy enforcement, streamed upload ingestion and safe paginated media listing.
+## Remaining
 
-The MinIO image built successfully and three live adapter/privacy tests passed after correcting a case-sensitive policy key. Five development-only dependency advisories remain; runtime dependencies audited clean. The homepage is still a starter. Upload UI, automatic cleanup, processing workers, playback, frontend screens, reliability and deployment completion remain.
+Phase 5: metadata extraction and thumbnails with a bounded FFmpeg/FFprobe worker. Playback/HLS, media organization and richer frontend screens follow. Uploaded files currently show Awaiting processing; they are not yet playable.
 
-See [security/storage report](docs/SECURITY_STORAGE_PROGRESS.md) for behavior, test scope, setup/recovery and remaining work. Earlier reports are historical and their build/Docker/auth status is superseded here.
+Before production: reconcile storage-only orphan multipart uploads or configure lifecycle rules, handle cleanup exhaustion operationally, validate Linux deployment and TLS, and complete backup/restore and reliability checks. Frozen completion manifests remain available for explicit retry instead of automatic expiry.
 
-Phase 4 now has authenticated multipart start, part upload, progress, completion, and cancellation endpoints. Immutable checksums and database operation leases support retry and prevent duplicate progress. Completed objects are streamed through full checksum verification before metadata processing is queued. See [multipart API](docs/MULTIPART_API.md) for the contract and recovery limits. The resume UI, automatic abandoned-upload cleanup, and production lifecycle/reconciliation remain unfinished.
+## References
 
-Latest verification: production build, typecheck, lint, formatting, 132 unit/database tests, 3 live MinIO tests, and 12 production browser/API tests passed (147 total). Fixed intermittent bucket policy verification caused by resource ordering while retaining fail-closed checks for changed permissions.
+- [Owner workflow and maintenance](docs/OWNER_UPLOAD_WORKFLOW.md)
+- [Multipart API contract](docs/MULTIPART_API.md)
+- [Earlier security/storage verification](docs/SECURITY_STORAGE_PROGRESS.md) — historical; current behavior is described above.
+
+Verification: 140 unit/database tests, 3 live MinIO tests, and 13 production browser/API tests passed (156 total). Production build, typecheck, lint, formatting, and the full dependency audit passed. Desktop and mobile screenshots were visually reviewed.

@@ -60,6 +60,8 @@ import { prisma } from "@/lib/db/prisma";
 import { storage } from "@/lib/storage";
 import { startMultipart, mutateMultipart } from "@/lib/media/multipart";
 import { UPLOAD_PART_SIZE } from "@/lib/media/upload-parts";
+import { runUploadMaintenance } from "@/lib/media/cleanup";
+import { GET as pendingUploads } from "@/app/api/media/uploads/route";
 const enabled = process.env.PRIVATEFLIX_SECURITY_TEST === "1";
 const hash = (bytes: Buffer) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -156,6 +158,26 @@ describe.skipIf(!enabled)("resumable upload with isolated PostgreSQL", () => {
       ).status,
     ).toBe(403);
     expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+  });
+  it("does not revive an upload expired while storage initialization was pending", async () => {
+    vi.mocked(storage.createMultipartUpload).mockImplementationOnce(
+      async () => {
+        await prisma.upload.updateMany({
+          where: { ownerId },
+          data: { status: "CANCELLED" },
+        });
+        return "late-storage-id";
+      },
+    );
+    expect((await start()).status).toBe(409);
+    expect((await prisma.upload.findFirstOrThrow()).status).toBe("FAILED");
+    expect(storage.abortMultipartUpload).toHaveBeenCalledWith(
+      expect.any(String),
+      "late-storage-id",
+    );
+    expect(
+      await prisma.processingJob.count({ where: { type: "CLEANUP" } }),
+    ).toBe(1);
   });
   it("resumes out of order parts, retries without double counting and completes once", async () => {
     const bytes = Buffer.alloc(UPLOAD_PART_SIZE + 9);
@@ -322,5 +344,102 @@ describe.skipIf(!enabled)("resumable upload with isolated PostgreSQL", () => {
     expect((await start()).status).toBe(429);
     await mutateMultipart(request(), id, "cancel");
     expect((await start()).status).toBe(201);
+  });
+  it("expires abandoned uploads and cleans their objects after a grace period", async () => {
+    const id = (await (await start()).json()).uploadId;
+    const now = new Date();
+    await prisma.upload.update({
+      where: { id },
+      data: { updatedAt: new Date(now.getTime() - 25 * 3600000) },
+    });
+    expect((await runUploadMaintenance(now)).expired).toBe(1);
+    expect(
+      (await prisma.upload.findUniqueOrThrow({ where: { id } })).status,
+    ).toBe("CANCELLED");
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(
+      (await runUploadMaintenance(new Date(now.getTime() + 31 * 60000)))
+        .cleaned,
+    ).toBe(1);
+    expect(storage.abortMultipartUpload).toHaveBeenCalledOnce();
+    expect(storage.deleteObject).toHaveBeenCalledOnce();
+    expect(
+      (await runUploadMaintenance(new Date(now.getTime() + 32 * 60000)))
+        .cleaned,
+    ).toBe(0);
+  });
+  it("preserves active leases and frozen completion manifests during expiry", async () => {
+    const first = (await (await start()).json()).uploadId;
+    const second = (await (await start()).json()).uploadId;
+    const old = new Date(Date.now() - 25 * 3600000);
+    await prisma.upload.update({
+      where: { id: first },
+      data: {
+        updatedAt: old,
+        operationToken: "00000000-0000-4000-8000-000000000001",
+        operationExpiresAt: new Date(Date.now() + 3600000),
+      },
+    });
+    await prisma.upload.update({
+      where: { id: second },
+      data: { updatedAt: old, completionStarted: true },
+    });
+    expect((await runUploadMaintenance()).expired).toBe(0);
+    expect(await prisma.upload.count({ where: { status: "UPLOADING" } })).toBe(
+      2,
+    );
+  });
+  it("does not delete successful media even when a stale cleanup job exists", async () => {
+    const started = await (await start()).json();
+    await part(started.uploadId);
+    await mutateMultipart(request(), started.uploadId, "complete");
+    await prisma.processingJob.create({
+      data: {
+        mediaId: started.mediaId,
+        type: "CLEANUP",
+        createdAt: new Date(0),
+      },
+    });
+    await runUploadMaintenance();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(state.object).toEqual(png);
+  });
+  it("retries failed cleanup with a delay and stops at the retry limit", async () => {
+    const started = await (await start()).json();
+    await mutateMultipart(request(), started.uploadId, "cancel");
+    await prisma.processingJob.updateMany({
+      where: { type: "CLEANUP" },
+      data: { createdAt: new Date(0) },
+    });
+    vi.mocked(storage.deleteObject).mockRejectedValue(new Error("Unavailable"));
+    try {
+      const now = Date.now();
+      for (let attempt = 0; attempt < 3; attempt++)
+        expect(
+          (await runUploadMaintenance(new Date(now + attempt * 3600000)))
+            .failed,
+        ).toBe(1);
+      const job = await prisma.processingJob.findFirstOrThrow({
+        where: { type: "CLEANUP" },
+      });
+      expect(job.attempts).toBe(3);
+      expect(job.status).toBe("FAILED");
+    } finally {
+      vi.mocked(storage.deleteObject).mockImplementation(async () => {
+        state.object = undefined;
+      });
+    }
+  });
+  it("lists resumable uploads only after authentication without storage identifiers", async () => {
+    await start();
+    expect(
+      (await pendingUploads(request("GET", undefined, { cookie: "" }))).status,
+    ).toBe(401);
+    const response = await pendingUploads(request("GET"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.uploads).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain("internal-storage-id");
+    expect(body.uploads[0]).not.toHaveProperty("operationToken");
   });
 });

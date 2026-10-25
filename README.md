@@ -71,3 +71,5 @@ Before running a container, set DATABASE_URL, REDIS_URL and S3_ENDPOINT to servi
 Authentication, recovery and initial streaming upload ingestion are implemented. See [the current security/storage report](docs/SECURITY_STORAGE_PROGRESS.md) for setup-token requirements, endpoint contracts, verification and remaining phase work. The UI is not yet the completed product.
 
 Use npm run test:integration only with a disposable database named privateflix_security_test; the suite resets test records. npm run auth:recover is an offline server command with hidden password prompts.
+
+The owner setup, sign-in, resumable upload interface, and automatic upload maintenance are implemented. See [Owner workflow](docs/OWNER_UPLOAD_WORKFLOW.md) and [Project status](PROJECT_STATUS.md) for current capabilities and remaining processing/deployment work.

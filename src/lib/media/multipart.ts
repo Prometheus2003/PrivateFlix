@@ -113,10 +113,12 @@ export async function startMultipart(request: NextRequest) {
     reserved = { id: upload.id, mediaId, key, ownerId: user.id };
     storageId = await storage.createMultipartUpload(key, input.mime);
     await requireAuth(request);
-    await prisma.upload.update({
-      where: { id: upload.id, ownerId: user.id },
+    const initialized = await prisma.upload.updateMany({
+      where: { id: upload.id, ownerId: user.id, status: "UPLOADING" },
       data: { storageUploadId: storageId },
     });
+    if (!initialized.count)
+      throw authError(409, "Upload initialization expired");
     return json(
       {
         uploadId: upload.id,
@@ -224,6 +226,7 @@ export async function mutateMultipart(
           data: {
             processingStatus: "FAILED",
             processingError: "Upload cancelled",
+            deletedAt: new Date(),
           },
         });
         if (upload.status !== "CANCELLED")
