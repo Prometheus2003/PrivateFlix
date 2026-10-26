@@ -29,3 +29,5 @@ The first run asks for owner setup. Read `SETUP_TOKEN` in your local `.env`, cho
 ## Verification
 
 The database suite covers full/ranged bodies, suffixes, If-Range, HEAD, encoded download filenames, authentication/expiry, missing/deleted/unfinished media, cancellation and revocation during an open transfer. Unit tests cover malformed and overflowing ranges. `npm run test:processing` additionally verifies actual ranged reads from MinIO and Chromium video playback, seeking, photo viewing, downloads and anonymous denial using real FFmpeg-generated fixtures. See [the processing runner instructions](MEDIA_PROCESSING.md).
+
+Playback browser checks run in both production and development by default. Set `PRIVATEFLIX_E2E_MODE` to select just one. Development coverage protects against React Strict Mode's setup/cleanup replay: the viewer must restore the video source after its cleanup removes it. Production-only playback tests cannot detect that lifecycle regression.

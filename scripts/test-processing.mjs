@@ -221,11 +221,17 @@ try {
       PRIVATEFLIX_FIXTURES: directory,
     },
   );
-  await run(
-    process.execPath,
-    ["scripts/test-e2e.mjs", "tests/e2e/processing.spec.ts"],
-    { ...env, NODE_ENV: "production", PRIVATEFLIX_PROCESSING_TEST: "1" },
-  );
+  const modes = process.env.PRIVATEFLIX_E2E_MODE
+    ? [process.env.PRIVATEFLIX_E2E_MODE]
+    : ["production", "development"];
+  for (const mode of modes) {
+    console.info("Playback browser verification: " + mode);
+    await run(
+      process.execPath,
+      ["scripts/test-e2e.mjs", "tests/e2e/processing.spec.ts"],
+      { ...env, PRIVATEFLIX_E2E_MODE: mode, PRIVATEFLIX_PROCESSING_TEST: "1" },
+    );
+  }
 } catch (error) {
   console.error(
     error instanceof Error ? error.message : "Processing verification failed",

@@ -15,6 +15,10 @@ export function MediaViewer({
   useEffect(() => {
     dialog.current?.showModal();
     const player = video.current;
+    // Strict Mode replays setup after cleanup in development. Restore the
+    // source removed by cleanup so the second setup can load the video.
+    const source = `/api/media/${media.id}/stream`;
+    if (player && player.getAttribute("src") !== source) player.src = source;
     return () => {
       if (player) {
         player.pause();
@@ -22,7 +26,7 @@ export function MediaViewer({
         player.load();
       }
     };
-  }, []);
+  }, [media.id]);
   return (
     <dialog
       className="media-viewer"

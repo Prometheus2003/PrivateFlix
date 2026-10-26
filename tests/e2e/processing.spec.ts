@@ -59,6 +59,7 @@ test("private thumbnails, playback, seeking and downloads work on desktop and mo
     });
     await page.getByRole("button", { name: "Play video" }).click();
     const player = page.locator("video");
+    await expect(player).toHaveAttribute("src", /\/api\/media\/.+\/stream$/);
     await expect
       .poll(() =>
         player.evaluate((element) => (element as HTMLVideoElement).readyState),

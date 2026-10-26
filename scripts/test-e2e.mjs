@@ -29,6 +29,10 @@ const server = launch(
   ],
   {
     ...process.env,
+    NODE_ENV:
+      process.env.PRIVATEFLIX_E2E_MODE === "development"
+        ? "development"
+        : "production",
     APP_URL: "https://localhost:3319",
     NEXT_TELEMETRY_DISABLED: "1",
   },
