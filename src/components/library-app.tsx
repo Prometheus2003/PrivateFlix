@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
+import { MediaViewer } from "./media-viewer";
 import {
   Film,
   ImageIcon,
@@ -86,6 +87,7 @@ export default function LibraryApp({ name }: { name: string }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [media, setMedia] = useState<Media[]>([]);
+  const [viewing, setViewing] = useState<Media | null>(null);
   const [uploads, setUploads] = useState<Pending[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -100,6 +102,7 @@ export default function LibraryApp({ name }: { name: string }) {
   function fail(error: unknown) {
     if (error instanceof ApiError && error.status === 401) {
       setUser(null);
+      setViewing(null);
       setMedia([]);
       setUploads([]);
       setResume(null);
@@ -511,6 +514,7 @@ export default function LibraryApp({ name }: { name: string }) {
               onClick={async () => {
                 try {
                   await api("/api/auth/logout", { method: "POST" });
+                  setViewing(null);
                   setUser(null);
                   setMedia([]);
                   setUploads([]);
@@ -698,6 +702,14 @@ export default function LibraryApp({ name }: { name: string }) {
                         ? "Awaiting processing"
                         : item.processingStatus.toLowerCase()}
                     </p>
+                    {item.processingStatus === "READY" && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => setViewing(item)}
+                      >
+                        {item.type === "VIDEO" ? "Play video" : "View photo"}
+                      </Button>
+                    )}
                   </div>
                 </article>
               ))}
@@ -751,6 +763,13 @@ export default function LibraryApp({ name }: { name: string }) {
           </Button>
         </div>
       </dialog>
+      {viewing && mode === "library" && (
+        <MediaViewer
+          key={viewing.id}
+          media={viewing}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </div>
   );
 }

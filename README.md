@@ -1,6 +1,6 @@
 # PrivateFlix
 
-Self-hosted, single-owner photo and video vault in development. Owner authentication, private uploads, resumable transfers and the library interface are implemented. Production deployment and playback remain unfinished.
+Self-hosted, single-owner photo and video vault in development. Owner authentication, private uploads, resumable transfers, metadata/thumbnails, authenticated streaming and browser playback are implemented. Production deployment and the richer library features remain unfinished.
 
 ## Current state
 
@@ -20,6 +20,8 @@ npm run dev
 ```
 
 Open http://localhost:3000. The app and backing service ports bind only to loopback. `env:init` refuses to overwrite an existing `.env`; on this working checkout a local configuration has already been generated. It contains unique development-only database/storage/Redis/session secrets and must stay untracked. `.env.example` contains placeholders only. On Windows restrict the `.env` ACL to your account; POSIX mode 0600 is requested by the generator but does not enforce Windows ACLs.
+
+For playable uploads, enable the background worker with `docker compose --profile processing up -d worker`. See [streaming and local preview](docs/STREAMING.md) for setup, database-port conflicts, playback controls and supported scope.
 
 The MinIO development image builds the upstream final security-release source at a pinned revision. Building requires internet access and can take several minutes. Community MinIO is archived; production backend selection remains deployment work. Anonymous object access is denied and tested. Development uses MinIO root credentials; production must provision a separate least-privilege identity.
 

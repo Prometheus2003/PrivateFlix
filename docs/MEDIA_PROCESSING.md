@@ -6,7 +6,7 @@ The library uses `/api/media/{id}/thumbnail` with the active session cookie. Thi
 
 ## Running the worker
 
-Generate/configure `.env`, start the backing services, and apply migrations using the main README. Configure `APP_URL` as the canonical HTTPS origin before starting production-mode containers. The worker validates the same configuration as the app. Then run:
+Generate/configure `.env`, start the backing services, and apply migrations using the main README. The development Compose worker uses the same local HTTP origin as the development app. Standalone production-mode containers require `APP_URL` to be the canonical HTTPS origin. Then run:
 
 ```sh
 docker compose --profile processing up -d --build worker
@@ -24,7 +24,7 @@ Queue delivery is Redis/BullMQ; PostgreSQL remains authoritative. The dispatcher
 - Originals are streamed and checked against `MAX_UPLOAD_SIZE`; thumbnail uploads are capped at 4 MiB. Dimensions above 100 megapixels or 16,384 pixels on either axis, and videos longer than seven days, are rejected.
 - Provision sufficient disk for the configured maximum original size plus overhead. Use a filesystem quota for the work volume in production. Normal completion/failure removes temporary files. Abrupt termination can leave a job directory behind; inspect and remove abandoned directories while the worker is stopped. A crash between thumbnail upload and database publication can also leave an unreferenced private object; storage reconciliation remains deployment work.
 - Decoder support depends on the installed FFmpeg build. PNG and H.264 MP4 are exercised by live tests. JPEG, WebP, GIF and other allowed video containers use the same probing pipeline; HEIC and unusual codec variants are not certified. Unsupported/corrupt media fail safely and retain their originals.
-- `READY` currently means metadata and thumbnail processing completed. Playback, HLS, optimized renditions, larger photo previews and owner retry controls are subsequent work. `ENABLE_TRANSCODING` does not yet enable a transcoder.
+- `READY` means metadata and thumbnail processing completed. [Original-file streaming and playback](STREAMING.md) are available. HLS, optimized renditions, larger generated photo previews and owner retry controls remain subsequent work. `ENABLE_TRANSCODING` does not yet enable a transcoder.
 
 ## Verification
 

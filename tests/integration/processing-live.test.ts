@@ -26,6 +26,7 @@ import { POST as upload } from "@/app/api/media/upload/route";
 import { GET as thumbnail } from "@/app/api/media/[id]/thumbnail/route";
 import { GET as list } from "@/app/api/media/route";
 import { storage } from "@/lib/storage";
+import { serveOriginal } from "@/lib/media/serve-original";
 let token: string;
 const enabled = process.env.PRIVATEFLIX_PROCESSING_TEST === "1";
 function request(path: string, authenticated = true) {
@@ -138,6 +139,26 @@ describe.skipIf(!enabled)("real Redis/FFmpeg/private storage pipeline", () => {
         const chunks: Buffer[] = [];
         for await (const chunk of stored.stream) chunks.push(chunk);
         expect(Buffer.concat(chunks)).toEqual(original);
+        const rangedRequest = new NextRequest(
+          "https://privateflix.test/api/media/" + media.id + "/stream",
+          {
+            headers: {
+              cookie: "privateflix_session=" + token,
+              range: "bytes=0-31",
+            },
+          },
+        );
+        const ranged = await serveOriginal(
+          rangedRequest,
+          Promise.resolve({ id: media.id }),
+        );
+        expect(ranged.status).toBe(206);
+        expect(ranged.headers.get("content-range")).toBe(
+          `bytes 0-31/${original.length}`,
+        );
+        expect(Buffer.from(await ranged.arrayBuffer())).toEqual(
+          original.subarray(0, 32),
+        );
       },
     );
   it("fails corrupt media without publishing a thumbnail or removing the original", async () => {
