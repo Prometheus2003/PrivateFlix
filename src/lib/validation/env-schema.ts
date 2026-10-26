@@ -44,6 +44,14 @@ export const envSchema = z
       .max(63)
       .regex(/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/),
     S3_REGION: z.string().min(1).default("us-east-1"),
+    STORAGE_PROVIDER: z.enum(["s3", "google-drive"]).default("s3"),
+    GOOGLE_DRIVE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_DRIVE_CLIENT_SECRET: z.string().min(1).optional(),
+    GOOGLE_DRIVE_REFRESH_TOKEN: z.string().min(1).optional(),
+    GOOGLE_DRIVE_FOLDER_ID: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]+$/)
+      .optional(),
     REDIS_URL: url(["redis:", "rediss:"]),
     SESSION_SECRET: secret.refine(
       (v) => /^[a-f0-9]{128}$/i.test(v),
@@ -76,6 +84,21 @@ export const envSchema = z
       .default("#8b5cf6"),
   })
   .superRefine((env, ctx) => {
+    if (env.STORAGE_PROVIDER === "google-drive") {
+      for (const field of [
+        "GOOGLE_DRIVE_CLIENT_ID",
+        "GOOGLE_DRIVE_CLIENT_SECRET",
+        "GOOGLE_DRIVE_REFRESH_TOKEN",
+        "GOOGLE_DRIVE_FOLDER_ID",
+      ] as const) {
+        if (!env[field])
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: "Required for Google Drive storage",
+          });
+      }
+    }
     if (env.SESSION_IDLE_TIMEOUT > env.SESSION_ABSOLUTE_TIMEOUT)
       ctx.addIssue({
         code: "custom",

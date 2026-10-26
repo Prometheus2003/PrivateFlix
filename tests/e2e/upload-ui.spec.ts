@@ -74,7 +74,9 @@ test("owner sets up, pauses and resumes a browser upload, then signs out", async
     await secondPart;
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     release();
-    await expect(page.getByRole("status")).toContainText("Upload paused");
+    await expect(
+      page.getByRole("status", { name: "Upload status" }),
+    ).toContainText("Upload paused");
     await page.unroute("**/parts/2");
     const pending = await db.upload.findFirstOrThrow({
       where: { status: "UPLOADING" },
@@ -86,10 +88,9 @@ test("owner sets up, pauses and resumes a browser upload, then signs out", async
     await page
       .getByRole("button", { name: "Resume upload", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText(
-      "Upload saved privately",
-      { timeout: 30000 },
-    );
+    await expect(
+      page.getByRole("status", { name: "Upload status" }),
+    ).toContainText("Upload saved privately", { timeout: 30000 });
     await expect(page.getByRole("heading", { name: file.name })).toBeVisible();
     const abandoned = await page.request.post("/api/media/upload/start", {
       headers: { Origin: "https://localhost:3319" },
@@ -116,7 +117,9 @@ test("owner sets up, pauses and resumes a browser upload, then signs out", async
     await page
       .getByRole("button", { name: "Cancel upload", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText("Upload cancelled");
+    await expect(
+      page.getByRole("status", { name: "Upload status" }),
+    ).toContainText("Upload cancelled");
     await expect(
       page.getByRole("heading", { name: "cancel-me.png", exact: true }),
     ).toHaveCount(0);

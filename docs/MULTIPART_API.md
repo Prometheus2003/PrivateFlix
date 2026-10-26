@@ -12,7 +12,7 @@ All operations require the owner's live session cookie. Mutations also require t
 
 ## Concurrency and recovery
 
-A database operation token serializes requests across application instances before buffering part bodies. Busy operations return 409 and Retry-After. A 15-minute lease permits recovery after a process dies. Every write is fenced by its token; a late request cannot commit progress under a replaced lease. Part checksums are saved before S3 writes and remain immutable, so late storage retries cannot replace a part with different content. Confirmed retries do not increment the byte counter or rewrite storage.
+A database operation token serializes requests across application instances before buffering part bodies. Busy operations return 409 and Retry-After. A 30-minute initial lease permits cloud promotion and recovery after a process dies. Completion renews its fenced lease for another 15 minutes before whole-file verification. Every write is fenced by its token; a late request cannot commit progress under a replaced lease. Part checksums are saved before S3 writes and remain immutable, so late storage retries cannot replace a part with different content. Confirmed retries do not increment the byte counter or rewrite storage.
 
 Part reads have a two-minute deadline and use at most one 8 MiB buffer per active upload. Final object verification streams with a ten-minute deadline. A revoked session cannot commit a part receipt or finalize media. Retry an interrupted part with identical bytes. After completion has started, only completion retries are accepted; part writes are frozen.
 

@@ -124,4 +124,7 @@ export interface StorageAdapter {
    * Check if the storage backend is reachable and the bucket exists.
    */
   healthCheck(): Promise<boolean>;
+
+  /** Bounded reconciliation of already verified temporary upload copies. */
+  cleanupStaging?(): Promise<number>;
 }

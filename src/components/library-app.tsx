@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { MediaViewer } from "./media-viewer";
+import { StorageSettings } from "./storage-settings";
 import {
   Film,
   ImageIcon,
@@ -12,6 +13,7 @@ import {
   ArrowUpRight,
   Check,
   Pause,
+  HardDrive,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { hashFile, hashPart } from "@/client/hash-file";
@@ -483,7 +485,7 @@ export default function LibraryApp({ name }: { name: string }) {
     <div className="app-shell">
       <aside className="sidebar">
         {brand}
-        <nav aria-label="Library navigation">
+        <nav aria-label="Library navigation" className="flex-wrap">
           <a className="nav-active" href="#collection">
             <Library size={19} />
             My library
@@ -491,6 +493,10 @@ export default function LibraryApp({ name }: { name: string }) {
           <a href="#upload">
             <UploadCloud size={19} />
             Upload media
+          </a>
+          <a href="#storage">
+            <HardDrive aria-hidden="true" size={19} />
+            Storage
           </a>
         </nav>
         <div className="sidebar-footer">
@@ -605,7 +611,12 @@ export default function LibraryApp({ name }: { name: string }) {
             </div>
           )}
         </section>
-        <p className="notice" role="status" aria-live="polite">
+        <p
+          className="notice"
+          role="status"
+          aria-live="polite"
+          aria-label="Upload status"
+        >
           {message}
         </p>
         {uploads.length > 0 && (
@@ -744,6 +755,7 @@ export default function LibraryApp({ name }: { name: string }) {
             </Button>
           </div>
         </section>
+        <StorageSettings />
         <footer className="library-footer">
           <Check size={14} /> Your library. No public links. No shared access.
         </footer>

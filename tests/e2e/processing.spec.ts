@@ -39,6 +39,13 @@ test("private thumbnails, playback, seeking and downloads work on desktop and mo
     await expect(
       page.getByRole("heading", { name: "My library." }),
     ).toBeVisible();
+    const storagePanel = page.getByRole("region", { name: "Your storage" });
+    await expect(
+      storagePanel.getByText("New uploads: S3 / MinIO", { exact: true }),
+    ).toBeVisible({ timeout: 20000 });
+    await storagePanel.locator("summary").click();
+    await expect(storagePanel.getByText(/npm run drive:connect/)).toBeVisible();
+    await storagePanel.locator("summary").click();
     const images = page.locator('img[src*="/thumbnail"]');
     await expect(images).toHaveCount(2);
     await expect
@@ -102,6 +109,9 @@ test("private thumbnails, playback, seeking and downloads work on desktop and mo
     await page.keyboard.press("Escape");
     await expect(page.locator(".media-viewer")).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("link", { name: "Storage", exact: true }).click();
+    await expect(storagePanel).toBeInViewport();
+    await storagePanel.locator("summary").click();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -127,6 +137,7 @@ test("private thumbnails, playback, seeking and downloads work on desktop and mo
     expect(errors).toEqual([]);
     const src = await images.first().getAttribute("src");
     await context.clearCookies();
+    expect((await page.request.get("/api/system/storage")).status()).toBe(401);
     expect((await page.request.get(src!)).status()).toBe(401);
     const video = await db.media.findFirstOrThrow({
       where: { type: "VIDEO", processingStatus: "READY" },

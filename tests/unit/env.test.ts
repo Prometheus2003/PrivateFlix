@@ -14,6 +14,28 @@ describe("runtime configuration", () => {
     const result = parseEnv(valid);
     expect(result.ENABLE_TRANSCODING).toBe(false);
     expect(result.SESSION_IDLE_TIMEOUT).toBe(86400);
+    expect(result.STORAGE_PROVIDER).toBe("s3");
+  });
+  it("requires complete Drive credentials before selecting it for uploads", () => {
+    expect(() =>
+      parseEnv({ ...valid, STORAGE_PROVIDER: "google-drive" }),
+    ).toThrow("GOOGLE_DRIVE_REFRESH_TOKEN");
+    expect(
+      parseEnv({
+        ...valid,
+        STORAGE_PROVIDER: "google-drive",
+        GOOGLE_DRIVE_CLIENT_ID: "client",
+        GOOGLE_DRIVE_CLIENT_SECRET: "secret",
+        GOOGLE_DRIVE_REFRESH_TOKEN: "refresh",
+        GOOGLE_DRIVE_FOLDER_ID: "private-folder",
+      }).STORAGE_PROVIDER,
+    ).toBe("google-drive");
+    expect(() =>
+      parseEnv({
+        ...valid,
+        GOOGLE_DRIVE_FOLDER_ID: "folder/path?token=private",
+      }),
+    ).toThrow("GOOGLE_DRIVE_FOLDER_ID");
   });
   it.each([
     "DATABASE_URL",

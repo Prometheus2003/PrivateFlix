@@ -25,7 +25,8 @@
     "test:integration": "node scripts/test-integration.mjs",
     "test:storage": "node scripts/test-storage.mjs",
     "worker:build": "node scripts/build-worker.mjs",
-    "test:processing": "node scripts/test-processing.mjs"
+    "test:processing": "node scripts/test-processing.mjs",
+    "drive:connect": "node scripts/connect-drive.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1155.0",

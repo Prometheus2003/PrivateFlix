@@ -54,6 +54,11 @@ export async function runUploadMaintenance(now = new Date()) {
   }
   let cleaned = 0,
     failed = 0;
+  try {
+    await storage.cleanupStaging?.();
+  } catch {
+    failed++;
+  }
   for (let i = 0; i < 20; i++) {
     const job = await prisma.$transaction(async (tx) => {
       // Claim atomically across app processes; do not hold a transaction during S3 I/O.

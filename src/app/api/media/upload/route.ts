@@ -7,7 +7,7 @@ import { requireAuth } from "@/lib/auth/require-auth";
 import { assertSameOrigin, authError, authFailure } from "@/lib/auth/http";
 import { prisma } from "@/lib/db/prisma";
 import { storage } from "@/lib/storage";
-import { generateStorageKey } from "@/lib/storage/keys";
+import { generateUploadKey as generateStorageKey } from "@/lib/storage/upload-key";
 import { validateFileExtension, validateFileSize } from "@/lib/media/validator";
 import {
   validatedUploadStream,

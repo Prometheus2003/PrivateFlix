@@ -367,3 +367,16 @@ model AuthThrottle {
   expiresAt DateTime
   @@map("auth_throttles")
 }
+
+// Server-only Drive identifiers. Allocated before upload for idempotent retries.
+model DriveObject {
+  key String @id
+  fileId String @unique
+  verifiedMd5 String?
+  verifiedSize BigInt?
+  revisionId String?
+  stagingPending Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@index([stagingPending, createdAt])
+  @@map("drive_objects")
+}

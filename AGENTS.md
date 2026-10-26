@@ -13,7 +13,7 @@
 
 - **Framework:** Next.js 16 (App Router) with TypeScript strict mode
 - **Database:** PostgreSQL 16 via Prisma 6 ORM
-- **Object Storage:** MinIO (S3-compatible, private bucket, no public access)
+- **Object Storage:** Private MinIO/S3 by default; optional owner-authorized Google Drive for new media with temporary MinIO upload staging. Persisted keys route existing objects to their original provider.
 - **Job Queue:** BullMQ + Redis
 - **Media Processing:** FFmpeg/FFprobe (containerized)
 - **Auth:** Argon2id + server-side sessions + HttpOnly cookies

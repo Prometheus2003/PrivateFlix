@@ -11,7 +11,7 @@ import {
   authFailure,
   readAuthBody,
 } from "@/lib/auth/http";
-import { generateStorageKey } from "@/lib/storage/keys";
+import { generateUploadKey as generateStorageKey } from "@/lib/storage/upload-key";
 import { validateFileExtension, validateFileSize } from "./validator";
 import {
   readUploadPart,
@@ -179,7 +179,7 @@ async function claim(ownerId: string, id: string) {
     },
     data: {
       operationToken: token,
-      operationExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      operationExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
     },
   });
   if (!result.count)
@@ -378,6 +378,18 @@ export async function mutateMultipart(
         if (!(await storage.objectExists(media.storageKey))) throw error;
       }
     }
+    // Cloud promotion can take several minutes. Renew the fenced lease before
+    // the independent whole-file verification pass starts.
+    const renewed = await prisma.upload.updateMany({
+      where: {
+        ...owned,
+        status: "UPLOADING",
+        operationExpiresAt: { gt: new Date() },
+      },
+      data: { operationExpiresAt: new Date(Date.now() + 15 * 60 * 1000) },
+    });
+    if (!renewed.count)
+      throw authError(409, "Upload operation expired; retry completion");
     const object = await storage.getObject(media.storageKey);
     if (object.metadata.contentLength !== Number(upload.totalBytes)) {
       object.stream.destroy();
