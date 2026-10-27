@@ -5,6 +5,11 @@
   --accent: #8b5cf6;
   --muted: #a0a0a9;
   --border: #2b2c31;
+  --surface: #19191d;
+  --surface-hover: #26232d;
+  --accent-surface: #292136;
+  --control-border: #62616e;
+  --error-text: #ffabb7;
 }
 @theme inline {
   --color-background: var(--background);

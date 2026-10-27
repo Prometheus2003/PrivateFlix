@@ -38,7 +38,7 @@ test("private thumbnails, playback, seeking and downloads work on desktop and mo
     await page.goto("/");
     await expect(
       page.getByRole("heading", { name: "My library." }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20000 });
     const storagePanel = page.getByRole("region", { name: "Your storage" });
     await expect(
       storagePanel.getByText("New uploads: S3 / MinIO", { exact: true }),

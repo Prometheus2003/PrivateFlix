@@ -1,11 +1,15 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import Image from "next/image";
-import { MediaViewer } from "./media-viewer";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { LibraryBrowser } from "./library-browser";
 import { StorageSettings } from "./storage-settings";
 import {
   Film,
-  ImageIcon,
   LockKeyhole,
   UploadCloud,
   Library,
@@ -17,14 +21,6 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { hashFile, hashPart } from "@/client/hash-file";
-interface Media {
-  id: string;
-  title: string;
-  type: string;
-  fileSize: number;
-  processingStatus: string;
-  hasThumbnail: boolean;
-}
 interface Pending {
   id: string;
   totalBytes: number;
@@ -88,11 +84,8 @@ export default function LibraryApp({ name }: { name: string }) {
   );
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [media, setMedia] = useState<Media[]>([]);
-  const [viewing, setViewing] = useState<Media | null>(null);
+  const [browseRefresh, setBrowseRefresh] = useState(0);
   const [uploads, setUploads] = useState<Pending[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [resume, setResume] = useState<Pending | null>(null);
   const [progress, setProgress] = useState(0);
@@ -104,8 +97,6 @@ export default function LibraryApp({ name }: { name: string }) {
   function fail(error: unknown) {
     if (error instanceof ApiError && error.status === 401) {
       setUser(null);
-      setViewing(null);
-      setMedia([]);
       setUploads([]);
       setResume(null);
       setFile(null);
@@ -118,17 +109,19 @@ export default function LibraryApp({ name }: { name: string }) {
           : "Something went wrong. Please try again.",
       );
   }
-  async function refresh(targetPage = page) {
-    const [items, pending] = await Promise.all([
-      api<{ media: Media[]; hasMore: boolean }>(
-        "/api/media?page=" + targetPage,
-      ),
-      api<{ uploads: Pending[] }>("/api/media/uploads"),
-    ]);
-    setMedia(items.media);
-    setHasMore(items.hasMore);
+  const expireSession = useCallback(() => {
+    controller.current?.abort();
+    setUser(null);
+    setUploads([]);
+    setResume(null);
+    setFile(null);
+    setMode("login");
+    setMessage("Your session expired. Sign in to continue.");
+  }, []);
+  async function refresh() {
+    const pending = await api<{ uploads: Pending[] }>("/api/media/uploads");
     setUploads(pending.uploads);
-    setPage(targetPage);
+    setBrowseRefresh((value) => value + 1);
   }
   useEffect(() => {
     let alive = true;
@@ -137,15 +130,10 @@ export default function LibraryApp({ name }: { name: string }) {
         const session = await api<{ user: { username: string } }>(
           "/api/auth/session",
         );
-        const [items, pending] = await Promise.all([
-          api<{ media: Media[]; hasMore: boolean }>("/api/media"),
-          api<{ uploads: Pending[] }>("/api/media/uploads"),
-        ]);
+        const pending = await api<{ uploads: Pending[] }>("/api/media/uploads");
         if (!alive) return;
         setUser(session.user.username);
         setMode("library");
-        setMedia(items.media);
-        setHasMore(items.hasMore);
         setUploads(pending.uploads);
       } catch (error) {
         if (!alive) return;
@@ -208,7 +196,7 @@ export default function LibraryApp({ name }: { name: string }) {
         "/api/auth/session",
       );
       form.reset();
-      await refresh(1);
+      await refresh();
       setUser(session.user.username);
       setMode("library");
     } catch (error) {
@@ -520,9 +508,7 @@ export default function LibraryApp({ name }: { name: string }) {
               onClick={async () => {
                 try {
                   await api("/api/auth/logout", { method: "POST" });
-                  setViewing(null);
                   setUser(null);
-                  setMedia([]);
                   setUploads([]);
                   setFile(null);
                   setResume(null);
@@ -544,6 +530,11 @@ export default function LibraryApp({ name }: { name: string }) {
           </h1>
           <p className="muted">A place for the things you want to keep.</p>
         </section>
+        <LibraryBrowser
+          refreshToken={browseRefresh}
+          onUnauthorized={expireSession}
+          onRefresh={() => void refresh().catch(fail)}
+        />
         <section className="upload-panel" id="upload">
           <div className="upload-heading">
             <span className="upload-icon">
@@ -661,100 +652,6 @@ export default function LibraryApp({ name }: { name: string }) {
             ))}
           </section>
         )}
-        <section className="collection-section">
-          <div className="section-title">
-            <h2>Your media</h2>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => void refresh().catch(fail)}
-            >
-              Refresh
-            </Button>
-          </div>
-          {media.length ? (
-            <div className="media-grid">
-              {media.map((item) => (
-                <article className="media-card" key={item.id}>
-                  <div
-                    className={
-                      "media-placeholder " +
-                      (item.type === "VIDEO"
-                        ? "video-placeholder"
-                        : "photo-placeholder")
-                    }
-                  >
-                    {item.hasThumbnail ? (
-                      <Image
-                        src={`/api/media/${item.id}/thumbnail`}
-                        alt={item.title}
-                        width={640}
-                        height={640}
-                        unoptimized
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                      />
-                    ) : item.type === "VIDEO" ? (
-                      <Film size={36} strokeWidth={1.2} />
-                    ) : (
-                      <ImageIcon size={36} strokeWidth={1.2} />
-                    )}
-                    <span>{item.type === "VIDEO" ? "VIDEO" : "PHOTO"}</span>
-                  </div>
-                  <div className="media-details">
-                    <h3 title={item.title}>{item.title}</h3>
-                    <p>
-                      {size(item.fileSize)}
-                      <span className="status-dot" />
-                      {item.processingStatus === "UPLOADED"
-                        ? "Awaiting processing"
-                        : item.processingStatus.toLowerCase()}
-                    </p>
-                    {item.processingStatus === "READY" && (
-                      <Button
-                        variant="secondary"
-                        onClick={() => setViewing(item)}
-                      >
-                        {item.type === "VIDEO" ? "Play video" : "View photo"}
-                      </Button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-library">
-              <Library size={36} strokeWidth={1.3} />
-              <h3>Your story starts here</h3>
-              <p className="muted">
-                Upload your first photo or video to begin your collection.
-              </p>
-              <a href="#upload">
-                Add your first memory <ArrowUpRight size={15} />
-              </a>
-            </div>
-          )}
-          <div className="pagination">
-            <Button
-              variant="ghost"
-              disabled={busy || page === 1}
-              onClick={() => void refresh(page - 1).catch(fail)}
-            >
-              Previous
-            </Button>
-            <span>Page {page}</span>
-            <Button
-              variant="ghost"
-              disabled={busy || !hasMore}
-              onClick={() => void refresh(page + 1).catch(fail)}
-            >
-              Next
-            </Button>
-          </div>
-        </section>
         <StorageSettings />
         <footer className="library-footer">
           <Check size={14} /> Your library. No public links. No shared access.
@@ -775,13 +672,6 @@ export default function LibraryApp({ name }: { name: string }) {
           </Button>
         </div>
       </dialog>
-      {viewing && mode === "library" && (
-        <MediaViewer
-          key={viewing.id}
-          media={viewing}
-          onClose={() => setViewing(null)}
-        />
-      )}
     </div>
   );
 }

@@ -1,0 +1,464 @@
+/* Interactive library controls share the app's semantic theme tokens. */
+.library-browser {
+  margin: 0 0 40px;
+  scroll-margin-top: 24px;
+}
+.library-browser button {
+  min-height: 44px;
+}
+.browser-heading,
+.browser-actions,
+.library-filter-row,
+.selected-collection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.browser-heading {
+  margin-bottom: 24px;
+}
+.browser-heading h2 {
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+}
+.browser-heading .eyebrow {
+  font-size: 10px;
+  letter-spacing: 1.8px;
+  color: var(--muted);
+}
+.browser-heading p {
+  font-size: 13px;
+  margin-top: 5px;
+}
+.browser-actions {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.browser-actions button {
+  min-height: 44px;
+}
+.browse-toolbar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.library-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 240px;
+  min-width: 0;
+  min-height: 46px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--background);
+  padding: 0 12px;
+  color: var(--muted);
+}
+.library-search:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.library-search input {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--foreground);
+}
+.library-search input:focus-visible {
+  outline: none;
+}
+.library-search input::placeholder {
+  color: var(--muted);
+}
+.library-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.library-field select,
+.library-field input,
+.library-field textarea {
+  min-height: 46px;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+}
+.library-field select {
+  cursor: pointer;
+  max-width: 230px;
+}
+.library-field textarea {
+  resize: vertical;
+}
+.library-field :is(select, input, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.view-switch {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.icon-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.icon-control:hover,
+.icon-control:focus-visible {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+.view-switch .icon-control {
+  border-radius: 0;
+}
+.icon-control[aria-pressed="true"] {
+  background: var(--accent-surface);
+  color: var(--foreground);
+}
+.library-filter-row {
+  justify-content: flex-start;
+  gap: 12px;
+  margin: 16px 0;
+}
+.library-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.library-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 16px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.library-tabs button[aria-pressed="true"] {
+  color: var(--foreground);
+  background: var(--accent-surface);
+}
+.library-tabs button:hover {
+  color: var(--foreground);
+}
+.collection-select {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.collection-select select {
+  width: auto;
+  min-width: 175px;
+  max-width: 260px;
+}
+.selected-collection {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 18px 0;
+  margin: 20px 0;
+}
+.selected-collection > div:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.selected-collection h3 {
+  font-size: 18px;
+}
+.selected-collection p {
+  font-size: 13px;
+  margin-top: 5px;
+}
+.library-result-count {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 12px 0 18px;
+}
+.library-notice {
+  color: var(--foreground);
+  font-size: 13px;
+}
+.library-notice:not(:empty) {
+  border-left: 2px solid var(--accent);
+  padding: 6px 12px;
+  margin: 0 0 18px;
+}
+.library-error {
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  padding: 24px;
+}
+.library-error p {
+  color: var(--error-text);
+  margin-bottom: 14px;
+}
+.card-visual {
+  position: relative;
+  min-width: 0;
+}
+.thumbnail-open {
+  width: 100%;
+  height: 180px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.thumbnail-open:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.thumbnail-open img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thumbnail-open:focus-visible {
+  outline-offset: -4px;
+}
+.favorite-control {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 2px 8px #0004;
+}
+.favorite-control[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--background);
+}
+.open-indicator {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 42px;
+  height: 42px;
+  margin: -21px 0 0 -21px;
+  border: 1px solid var(--control-border);
+  border-radius: 50%;
+  background: var(--background);
+  color: var(--foreground);
+  opacity: 0;
+  transform: translateY(3px);
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+.thumbnail-open:is(:hover, :focus-visible) .open-indicator {
+  opacity: 1;
+  transform: translateY(0);
+}
+.interactive-media {
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.interactive-media:hover {
+  border-color: var(--control-border);
+  box-shadow: 0 6px 22px #0002;
+}
+.interactive-media .media-details h3 {
+  font-size: 14px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.interactive-media .media-details p {
+  color: var(--muted);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.media-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.media-details .media-card-actions > button {
+  margin: 0;
+  min-height: 44px;
+  width: auto;
+}
+.media-card-actions > button:not(.icon-control) {
+  flex: 1;
+}
+.media-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.media-list .media-card {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+}
+.media-list .thumbnail-open {
+  height: 100%;
+  min-height: 160px;
+}
+.media-list .media-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.media-list .media-card-actions {
+  justify-content: flex-start;
+}
+.media-list .media-card-actions > button:not(.icon-control) {
+  flex: 0 1 auto;
+  min-width: 130px;
+}
+.skeleton-card {
+  min-height: 290px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    110deg,
+    var(--surface),
+    var(--surface-hover),
+    var(--surface)
+  );
+}
+.collection-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: 90dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.collection-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.collection-dialog .library-field {
+  margin-top: 2px;
+}
+.collection-dialog .library-field select {
+  max-width: 100%;
+}
+.collection-dialog .dialog-copy {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  margin: 0;
+}
+.collection-dialog .dialog-actions {
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.form-error {
+  color: var(--error-text);
+  margin: 0;
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .library-browser {
+    margin: 0 0 32px;
+  }
+  .browse-toolbar {
+    padding: 14px;
+    gap: 12px;
+  }
+  .library-search {
+    flex-basis: 100%;
+  }
+  .browse-toolbar > .library-field {
+    flex: 1 1 120px;
+  }
+  .browse-toolbar .library-field select {
+    max-width: 100%;
+  }
+  .library-filter-row {
+    align-items: stretch;
+  }
+  .library-tabs {
+    flex-shrink: 0;
+  }
+  .collection-select {
+    flex: 1 1 100%;
+  }
+  .collection-select select {
+    flex: 1;
+    max-width: calc(100% - 25px);
+  }
+  .browser-heading {
+    gap: 14px;
+  }
+  .browser-heading h2 {
+    font-size: 24px;
+  }
+  .media-list .media-card {
+    grid-template-columns: 105px minmax(0, 1fr);
+  }
+  .media-list .media-details {
+    padding: 14px 10px;
+  }
+  .media-list .media-card-actions {
+    gap: 2px;
+  }
+  .media-list .media-card-actions > button:not(.icon-control) {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  .media-list .favorite-control {
+    right: 4px;
+    top: 4px;
+  }
+  .selected-collection {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .selected-collection > div:first-child {
+    flex: 0 1 auto;
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .open-indicator {
+    transform: none;
+  }
+}

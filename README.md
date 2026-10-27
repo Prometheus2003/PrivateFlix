@@ -82,3 +82,8 @@ temporary local disk. The owner dashboard shows the configured destination and
 setup steps. Follow [Google Drive setup](docs/GOOGLE_DRIVE.md) and run
 `npm run drive:connect -- "path/to/downloaded-oauth-client.json"` on your computer.
 Live Google account verification is required before using it for a large library.
+
+The [interactive library](docs/LIBRARY_ORGANIZATION.md) supports search, media and
+favorite filters, collections, sorting, pagination and grid/list views. Favorites
+and organization changes persist in PostgreSQL. Collection deletion preserves
+originals, and the interface reports failed changes without faking a saved state.
