@@ -124,6 +124,7 @@ export function MediaDetailsDialog({
       aria-labelledby={`${id}-title`}
       onCancel={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         if (!busy) onClose();
       }}
     >

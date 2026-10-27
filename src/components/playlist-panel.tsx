@@ -434,6 +434,7 @@ export function PlaylistPanel({
           onUnauthorized={onUnauthorized}
           onClose={() => {
             setViewing(null);
+            setRevision((value) => value + 1);
             onPlaybackChange();
           }}
           onPrevious={viewing > 0 ? () => setViewing(viewing - 1) : undefined}

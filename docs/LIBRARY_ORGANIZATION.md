@@ -6,11 +6,12 @@ All endpoints require the authenticated owner and return private, noncached JSON
 
 ## Owner interface
 
-- Search titles and original filenames with a 300 ms debounce. Searches treat `%`,
+- Search titles, original filenames, descriptions and tags with a 300 ms debounce. Searches treat `%`,
   `_` and backslash literally, support case-insensitive matching, and accept up to
   120 characters.
-- Combine video/photo, favorite and collection filters. Sort by newest, oldest or
-  title; browse twenty results per page. Clear filters restores the full library.
+- Combine video/photo, favorite and collection filters with upload dates, format,
+  duration and watch status. Sort by newest, oldest, title, duration or recently
+  watched; browse twenty results per page. Clear filters restores the full library.
 - Switch between grid and list layouts. Favorite buttons expose their saved state
   and report a failed save without pretending it succeeded.
 - Create collections, edit their names/descriptions, add or remove media, and
@@ -30,8 +31,10 @@ All endpoints require the authenticated owner and return private, noncached JSON
 
 The grid/list choice and current filters are local UI state; favorite and
 collection changes are persisted. Playback history/resume and account/session
-settings are described in [History and settings](HISTORY_SETTINGS.md). Nested
-collections, tags, playlists and bulk editing remain further Phase 7 work.
+settings are described in [History and settings](HISTORY_SETTINGS.md). See
+[Playlists and metadata](PLAYLISTS_METADATA.md) and
+[Filters, photo viewing and bulk organization](LIBRARY_WORKFLOWS.md) for those
+workflows. Collection covers/order and nesting remain further Phase 7 work.
 
 ## API contract
 

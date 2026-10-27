@@ -27,6 +27,8 @@ import { GET as thumbnail } from "@/app/api/media/[id]/thumbnail/route";
 import { GET as list } from "@/app/api/media/route";
 import { storage } from "@/lib/storage";
 import { serveOriginal } from "@/lib/media/serve-original";
+import { mutateMedia } from "@/lib/media/bulk";
+import { runUploadMaintenance } from "@/lib/media/cleanup";
 let token: string;
 const enabled = process.env.PRIVATEFLIX_PROCESSING_TEST === "1";
 function request(path: string, authenticated = true) {
@@ -172,6 +174,10 @@ describe.skipIf(!enabled)("real Redis/FFmpeg/private storage pipeline", () => {
       data: { maxAttempts: 1 },
     });
     const failed = await waitFor(media.id, "FAILED");
+    expect(
+      (await prisma.upload.findFirstOrThrow({ where: { mediaId: media.id } }))
+        .status,
+    ).toBe("FAILED");
     expect(failed.thumbnailStorageKey).toBeNull();
     expect(await storage.objectExists(media.storageKey)).toBe(true);
     expect(
@@ -181,5 +187,57 @@ describe.skipIf(!enabled)("real Redis/FFmpeg/private storage pipeline", () => {
         })
       ).status,
     ).toBe(404);
+  });
+  it("removes a confirmed synthetic original and all generated files from real storage", async () => {
+    const owner = await prisma.user.findFirstOrThrow();
+    const id = randomUUID();
+    const keys = [
+      `private/${id}/original`,
+      `private/${id}/thumbnail`,
+      `private/${id}/preview`,
+    ];
+    const bytes = Buffer.from("Disposable cleanup fixture");
+    for (const key of keys)
+      await storage.putObject(key, bytes, {
+        contentType: "application/octet-stream",
+        contentLength: bytes.length,
+      });
+    await prisma.media.create({
+      data: {
+        id,
+        ownerId: owner.id,
+        title: "Cleanup fixture",
+        originalFilename: "cleanup.png",
+        mimeType: "image/png",
+        type: "IMAGE",
+        fileSize: bytes.length,
+        storageKey: keys[0],
+        thumbnailStorageKey: keys[1],
+        previewStorageKey: keys[2],
+        processingStatus: "READY",
+      },
+    });
+    await mutateMedia(owner.id, {
+      action: "delete",
+      mediaIds: [id],
+      confirm: true,
+    });
+    expect(await storage.objectExists(keys[0])).toBe(true);
+    await prisma.processingJob.updateMany({
+      where: { mediaId: id, type: "CLEANUP" },
+      data: { createdAt: new Date(0) },
+    });
+    expect((await runUploadMaintenance()).cleaned).toBe(1);
+    for (const key of keys) expect(await storage.objectExists(key)).toBe(false);
+    expect(await prisma.media.findUnique({ where: { id } })).toBeNull();
+    expect(
+      await prisma.media.count({
+        where: {
+          ownerId: owner.id,
+          processingStatus: "READY",
+          deletedAt: null,
+        },
+      }),
+    ).toBe(2);
   });
 });

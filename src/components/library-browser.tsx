@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { z } from "zod";
 import {
@@ -25,6 +25,11 @@ import { MediaViewer } from "./media-viewer";
 import { CollectionDialog } from "./collection-dialog";
 import { MediaDetailsDialog } from "./media-details-dialog";
 import { PlaylistMembershipDialog } from "./playlist-panel";
+import {
+  BulkMediaDialog,
+  type BulkAction,
+  type BulkItem,
+} from "./bulk-media-dialog";
 
 const mediaSchema = z.object({
   id: z.string().uuid(),
@@ -34,7 +39,12 @@ const mediaSchema = z.object({
   processingStatus: z.string(),
   hasThumbnail: z.boolean(),
   isFavorite: z.boolean(),
+  canRetryProcessing: z.boolean().default(false),
   duration: z.number().nullable().optional(),
+  createdAt: z.string().optional(),
+  collections: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .default([]),
 });
 const collectionSchema = z.object({
   id: z.string().uuid(),
@@ -51,6 +61,12 @@ interface Filters {
   collection: string;
   sort: string;
   page: number;
+  format: string;
+  dateFrom: string;
+  dateTo: string;
+  minDuration: string;
+  maxDuration: string;
+  watch: string;
 }
 const initialFilters: Filters = {
   q: "",
@@ -59,6 +75,12 @@ const initialFilters: Filters = {
   collection: "",
   sort: "newest",
   page: 1,
+  format: "",
+  dateFrom: "",
+  dateTo: "",
+  minDuration: "",
+  maxDuration: "",
+  watch: "all",
 };
 class LibraryError extends Error {
   constructor(
@@ -130,6 +152,20 @@ export function LibraryBrowser({
   const [viewing, setViewing] = useState<Media | null>(null);
   const [editing, setEditing] = useState<Media | null>(null);
   const [playlistMedia, setPlaylistMedia] = useState<Media | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<
+    BulkAction | "favorite" | "unfavorite"
+  >("favorite");
+  const [bulkDialog, setBulkDialog] = useState<{
+    action: BulkAction;
+    items: BulkItem[];
+  } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkSubmitting = useRef(false);
+  const mediaHeading = useRef<HTMLHeadingElement>(null);
+  const [advancedError, setAdvancedError] = useState("");
+  const advancedForm = useRef<HTMLFormElement>(null);
   const [dialog, setDialog] = useState<{
     mode: "create" | "edit" | "add" | "delete";
     media?: Media;
@@ -139,21 +175,49 @@ export function LibraryBrowser({
   const fetching = useRef(false);
   const mutationRequests = useRef(new Set<AbortController>());
   const selected = collections.find((item) => item.id === filters.collection);
+  const viewingQueue = viewing
+    ? items.filter(
+        (item) =>
+          item.type === viewing.type && item.processingStatus === "READY",
+      )
+    : [];
+  const viewingIndex = viewingQueue.findIndex(
+    (item) => item.id === viewing?.id,
+  );
   const filtered = Boolean(
     filters.q ||
       filters.type !== "all" ||
       filters.favorite ||
-      filters.collection,
+      filters.collection ||
+      filters.format ||
+      filters.dateFrom ||
+      filters.dateTo ||
+      filters.minDuration ||
+      filters.maxDuration ||
+      filters.watch !== "all",
   );
   const change = (next: Partial<Filters>) => {
+    setSelectedIds(new Set());
     setLoading(true);
     setFilters((previous) => ({ ...previous, ...next, page: 1 }));
   };
   const reset = () => {
+    setSelectedIds(new Set());
     setSearch("");
+    setAdvancedError("");
     setLoading(true);
     setFilters(initialFilters);
   };
+  useEffect(() => {
+    advancedForm.current?.reset();
+  }, [
+    filters.format,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.minDuration,
+    filters.maxDuration,
+    filters.watch,
+  ]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -184,6 +248,22 @@ export function LibraryBrowser({
         });
         if (filters.q) params.set("q", filters.q);
         if (filters.collection) params.set("collection", filters.collection);
+        if (filters.format) params.set("format", filters.format);
+        params.set("watch", filters.watch);
+        if (filters.dateFrom)
+          params.set(
+            "from",
+            new Date(`${filters.dateFrom}T00:00:00`).toISOString(),
+          );
+        if (filters.dateTo) {
+          const end = new Date(`${filters.dateTo}T00:00:00`);
+          end.setDate(end.getDate() + 1);
+          params.set("to", end.toISOString());
+        }
+        if (filters.minDuration)
+          params.set("minDuration", String(Number(filters.minDuration) * 60));
+        if (filters.maxDuration)
+          params.set("maxDuration", String(Number(filters.maxDuration) * 60));
         const signal = AbortSignal.any([
           controller.signal,
           AbortSignal.timeout(20000),
@@ -205,6 +285,11 @@ export function LibraryBrowser({
         if (controller.signal.aborted || version !== requestVersion.current)
           return;
         setItems(result.media);
+        const visible = new Set(result.media.map((item) => item.id));
+        setSelectedIds((previous) => {
+          const next = new Set([...previous].filter((id) => visible.has(id)));
+          return next.size === previous.size ? previous : next;
+        });
         setTotal(result.total);
         setHasMore(result.hasMore);
         setCollections(list.collections);
@@ -243,6 +328,7 @@ export function LibraryBrowser({
       viewing ||
       editing ||
       playlistMedia ||
+      bulkDialog ||
       error ||
       !items.some((item) =>
         ["UPLOADED", "PROCESSING"].includes(item.processingStatus),
@@ -256,24 +342,41 @@ export function LibraryBrowser({
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [items, loading, error, dialog, viewing, editing, playlistMedia]);
+  }, [
+    items,
+    loading,
+    error,
+    dialog,
+    viewing,
+    editing,
+    playlistMedia,
+    bulkDialog,
+  ]);
 
-  async function updateItem(item: Media, action: "favorite" | "remove") {
+  async function updateItem(
+    item: Media,
+    action: "favorite" | "remove" | "retry",
+  ) {
     const controller = new AbortController();
     mutationRequests.current.add(controller);
     setPending((previous) => new Set(previous).add(item.id));
     setNotice("");
     try {
       const path =
-        action === "favorite"
-          ? `/api/media/${item.id}/favorite`
-          : `/api/collections/${filters.collection}/items`;
+        action === "retry"
+          ? `/api/media/${item.id}/retry`
+          : action === "favorite"
+            ? `/api/media/${item.id}/favorite`
+            : `/api/collections/${filters.collection}/items`;
       await request(path, {
         ...json(
           action === "favorite"
             ? { favorite: !item.isFavorite }
-            : { mediaId: item.id, present: false },
+            : action === "retry"
+              ? { confirm: true }
+              : { mediaId: item.id, present: false },
         ),
+        ...(action === "retry" ? { method: "POST" } : {}),
         signal: AbortSignal.any([
           controller.signal,
           AbortSignal.timeout(15000),
@@ -281,11 +384,13 @@ export function LibraryBrowser({
       });
       if (controller.signal.aborted) return;
       setNotice(
-        action === "remove"
-          ? "Removed from this collection. Your original is safe."
-          : item.isFavorite
-            ? "Removed from favorites."
-            : "Added to favorites.",
+        action === "retry"
+          ? "Processing retry queued. Your verified original is preserved."
+          : action === "remove"
+            ? "Removed from this collection. Your original is safe."
+            : item.isFavorite
+              ? "Removed from favorites."
+              : "Added to favorites.",
       );
       setRevision((value) => value + 1);
     } catch (failure) {
@@ -309,6 +414,85 @@ export function LibraryBrowser({
     }
   }
 
+  function applyAdvanced(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    const next = {
+      format: String(fields.get("format") ?? ""),
+      dateFrom: String(fields.get("dateFrom") ?? ""),
+      dateTo: String(fields.get("dateTo") ?? ""),
+      minDuration: String(fields.get("minDuration") ?? ""),
+      maxDuration: String(fields.get("maxDuration") ?? ""),
+      watch: String(fields.get("watch") ?? "all"),
+    };
+    if (next.dateFrom && next.dateTo && next.dateFrom > next.dateTo) {
+      setAdvancedError("The start date must be on or before the end date.");
+      return;
+    }
+    if (
+      next.minDuration &&
+      next.maxDuration &&
+      Number(next.minDuration) > Number(next.maxDuration)
+    ) {
+      setAdvancedError("Minimum duration must not exceed maximum duration.");
+      return;
+    }
+    setAdvancedError("");
+    change(next);
+  }
+  function bulkSaved(message: string) {
+    setNotice(message);
+    setBulkDialog(null);
+    setSelectedIds(new Set());
+    setRevision((value) => value + 1);
+    onPlaylistChange?.();
+    onPlaybackChange?.();
+    requestAnimationFrame(() => mediaHeading.current?.focus());
+  }
+  async function applyBulk() {
+    const selectedItems = items.filter((item) => selectedIds.has(item.id));
+    if (!selectedItems.length || bulkSubmitting.current) return;
+    if (bulkAction !== "favorite" && bulkAction !== "unfavorite") {
+      setBulkDialog({ action: bulkAction, items: selectedItems });
+      return;
+    }
+    bulkSubmitting.current = true;
+    setBulkBusy(true);
+    setNotice("");
+    const controller = new AbortController();
+    mutationRequests.current.add(controller);
+    try {
+      await request("/api/media/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "favorite",
+          mediaIds: selectedItems.map((item) => item.id),
+          favorite: bulkAction === "favorite",
+        }),
+        signal: AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(20000),
+        ]),
+      });
+      if (!controller.signal.aborted) bulkSaved("Selected favorites updated.");
+    } catch (failure) {
+      if (!controller.signal.aborted) {
+        if (failure instanceof LibraryError && failure.status === 401)
+          onUnauthorized();
+        else
+          setNotice(
+            failure instanceof Error
+              ? failure.message
+              : "Bulk changes could not be saved.",
+          );
+      }
+    } finally {
+      mutationRequests.current.delete(controller);
+      bulkSubmitting.current = false;
+      if (!controller.signal.aborted) setBulkBusy(false);
+    }
+  }
   return (
     <section
       className="collection-section library-browser"
@@ -318,10 +502,23 @@ export function LibraryBrowser({
       <div className="browser-heading">
         <div>
           <span className="eyebrow">CURATED BY YOU</span>
-          <h2 id="media-title">Your media</h2>
+          <h2 id="media-title" ref={mediaHeading} tabIndex={-1}>
+            Your media
+          </h2>
           <p className="muted">Find it. Save it. Make it yours.</p>
         </div>
         <div className="browser-actions">
+          <Button
+            variant="secondary"
+            aria-pressed={selecting}
+            disabled={loading || bulkBusy}
+            onClick={() => {
+              setSelecting((value) => !value);
+              setSelectedIds(new Set());
+            }}
+          >
+            {selecting ? "Done selecting" : "Select items"}
+          </Button>
           <Button variant="ghost" disabled={loading} onClick={onRefresh}>
             <RefreshCw size={16} aria-hidden="true" />
             Refresh
@@ -344,7 +541,7 @@ export function LibraryBrowser({
             maxLength={120}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search your library…"
+            placeholder="Search titles, descriptions or tags…"
           />
           {search && (
             <button
@@ -383,6 +580,7 @@ export function LibraryBrowser({
             <option value="oldest">Oldest first</option>
             <option value="title">Title A–Z</option>
             <option value="duration">Longest first</option>
+            <option value="recent">Recently watched</option>
           </select>
         </label>
         <div className="view-switch" role="group" aria-label="Display layout">
@@ -404,6 +602,124 @@ export function LibraryBrowser({
           </button>
         </div>
       </div>
+      <details className="advanced-filters">
+        <summary>More filters</summary>
+        <form
+          ref={advancedForm}
+          className="advanced-filter-form"
+          onSubmit={applyAdvanced}
+        >
+          <label className="library-field">
+            File format
+            <select
+              name="format"
+              aria-label="File format"
+              defaultValue={filters.format}
+            >
+              <option value="">All formats</option>
+              {[
+                "mp4",
+                "webm",
+                "mkv",
+                "mov",
+                "avi",
+                "jpg",
+                "png",
+                "webp",
+                "gif",
+                "heic",
+              ].map((format) => (
+                <option value={format} key={format}>
+                  {format === "jpg" ? "JPEG" : format.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="library-field">
+            Uploaded from
+            <input
+              name="dateFrom"
+              aria-label="Uploaded from"
+              type="date"
+              defaultValue={filters.dateFrom}
+            />
+          </label>
+          <label className="library-field">
+            Uploaded through
+            <input
+              name="dateTo"
+              aria-label="Uploaded through"
+              type="date"
+              defaultValue={filters.dateTo}
+            />
+          </label>
+          <label className="library-field">
+            Minimum minutes
+            <input
+              name="minDuration"
+              aria-label="Minimum minutes"
+              type="number"
+              min="0"
+              max="525600"
+              step="any"
+              defaultValue={filters.minDuration}
+            />
+          </label>
+          <label className="library-field">
+            Maximum minutes
+            <input
+              name="maxDuration"
+              aria-label="Maximum minutes"
+              type="number"
+              min="0"
+              max="525600"
+              step="any"
+              defaultValue={filters.maxDuration}
+            />
+          </label>
+          <label className="library-field">
+            Viewing status
+            <select
+              name="watch"
+              aria-label="Viewing status"
+              defaultValue={filters.watch}
+            >
+              <option value="all">All media</option>
+              <option value="watched">Watched videos</option>
+              <option value="unwatched">Unwatched videos</option>
+              <option value="started">Started videos</option>
+            </select>
+          </label>
+          {advancedError && (
+            <p className="form-error" role="alert">
+              {advancedError}
+            </p>
+          )}
+          <div className="workspace-actions">
+            <Button type="submit" variant="secondary" disabled={loading}>
+              Apply filters
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={loading}
+              onClick={() => {
+                setAdvancedError("");
+                change({
+                  format: "",
+                  dateFrom: "",
+                  dateTo: "",
+                  minDuration: "",
+                  maxDuration: "",
+                  watch: "all",
+                });
+              }}
+            >
+              Reset extra filters
+            </Button>
+          </div>
+        </form>
+      </details>
       <div className="library-filter-row">
         <div
           className="library-tabs"
@@ -447,6 +763,55 @@ export function LibraryBrowser({
           </Button>
         )}
       </div>
+      {selecting && (
+        <div className="bulk-toolbar" role="group" aria-label="Selected media">
+          <p role="status">{selectedIds.size} selected on this page</p>
+          <div className="workspace-actions">
+            <Button
+              variant="secondary"
+              disabled={loading || bulkBusy}
+              onClick={() =>
+                setSelectedIds(new Set(items.map((item) => item.id)))
+              }
+            >
+              Select page
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={bulkBusy}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Clear selection
+            </Button>
+          </div>
+          <label className="library-field">
+            Bulk action
+            <select
+              aria-label="Bulk action"
+              value={bulkAction}
+              disabled={bulkBusy}
+              onChange={(event) =>
+                setBulkAction(event.target.value as typeof bulkAction)
+              }
+            >
+              <option value="favorite">Favorite selected</option>
+              <option value="unfavorite">Unfavorite selected</option>
+              <option value="addcollection">Add to collection</option>
+              <option value="movecollection">Move to collection</option>
+              <option value="addtags">Add tags</option>
+              <option value="replacetags">Replace tags</option>
+              <option value="removetags">Remove tags</option>
+              <option value="delete">Delete media</option>
+            </select>
+          </label>
+          <Button
+            disabled={loading || bulkBusy || !selectedIds.size}
+            onClick={() => void applyBulk()}
+          >
+            {bulkBusy ? "Saving…" : "Apply to selection"}
+          </Button>
+        </div>
+      )}
       {selected && (
         <div className="selected-collection">
           <div>
@@ -507,8 +872,27 @@ export function LibraryBrowser({
                   className="media-card interactive-media"
                   key={item.id}
                   aria-label={item.title}
+                  data-selected={selectedIds.has(item.id)}
                 >
                   <div className="card-visual">
+                    {selecting && (
+                      <label className="selection-control">
+                        <span className="sr-only">Select: {item.title}</span>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          disabled={bulkBusy}
+                          onChange={(event) =>
+                            setSelectedIds((previous) => {
+                              const next = new Set(previous);
+                              if (event.target.checked) next.add(item.id);
+                              else next.delete(item.id);
+                              return next;
+                            })
+                          }
+                        />
+                      </label>
+                    )}
                     <button
                       className={`thumbnail-open media-placeholder ${item.type === "VIDEO" ? "video-placeholder" : "photo-placeholder"}`}
                       aria-label={`Open ${item.title}`}
@@ -566,7 +950,52 @@ export function LibraryBrowser({
                         ? "Awaiting processing"
                         : item.processingStatus.toLowerCase()}
                     </p>
+                    {(item.duration != null || item.createdAt) && (
+                      <p className="media-extra">
+                        {item.duration != null
+                          ? `${Math.floor(item.duration / 60)}:${String(Math.floor(item.duration % 60)).padStart(2, "0")}`
+                          : "Photo"}
+                        {item.createdAt
+                          ? ` · ${new Date(item.createdAt).toLocaleDateString()}`
+                          : ""}
+                      </p>
+                    )}
+                    {item.collections.length > 0 && (
+                      <p
+                        className="media-groups"
+                        title={item.collections
+                          .map((group) => group.name)
+                          .join(", ")}
+                      >
+                        {item.collections
+                          .map((group) => group.name)
+                          .join(" · ")}
+                      </p>
+                    )}
                     <div className="media-card-actions">
+                      {item.processingStatus === "FAILED" &&
+                        item.canRetryProcessing && (
+                          <Button
+                            variant="secondary"
+                            disabled={pending.has(item.id)}
+                            onClick={() => void updateItem(item, "retry")}
+                          >
+                            Retry processing
+                          </Button>
+                        )}
+                      <button
+                        className="icon-control"
+                        aria-label={`Delete media: ${item.title}`}
+                        disabled={
+                          bulkBusy ||
+                          !["READY", "FAILED"].includes(item.processingStatus)
+                        }
+                        onClick={() =>
+                          setBulkDialog({ action: "delete", items: [item] })
+                        }
+                      >
+                        <Trash2 size={17} aria-hidden="true" />
+                      </button>
                       {item.type === "VIDEO" &&
                         item.processingStatus === "READY" && (
                           <button
@@ -689,9 +1118,20 @@ export function LibraryBrowser({
         <MediaViewer
           key={viewing.id}
           media={viewing}
+          onPrevious={
+            viewingIndex > 0
+              ? () => setViewing(viewingQueue[viewingIndex - 1])
+              : undefined
+          }
+          onNext={
+            viewingIndex >= 0 && viewingIndex < viewingQueue.length - 1
+              ? () => setViewing(viewingQueue[viewingIndex + 1])
+              : undefined
+          }
           onUnauthorized={onUnauthorized}
           onClose={() => {
             setViewing(null);
+            setRevision((value) => value + 1);
             onPlaybackChange?.();
           }}
         />
@@ -719,6 +1159,16 @@ export function LibraryBrowser({
             setNotice("Video added to playlist.");
             onPlaylistChange?.();
           }}
+        />
+      )}
+      {bulkDialog && (
+        <BulkMediaDialog
+          action={bulkDialog.action}
+          items={bulkDialog.items}
+          collections={collections}
+          onUnauthorized={onUnauthorized}
+          onClose={() => setBulkDialog(null)}
+          onSaved={bulkSaved}
         />
       )}
     </section>

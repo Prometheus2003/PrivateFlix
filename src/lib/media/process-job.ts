@@ -61,6 +61,14 @@ export async function processMediaJob(
           processingError: "Processing retry limit reached",
         },
       });
+      await tx.upload.updateMany({
+        where: {
+          mediaId: found.mediaId,
+          ownerId: found.media.ownerId,
+          status: { in: ["UPLOADED", "PROCESSING"] },
+        },
+        data: { status: "FAILED", errorMessage: "Media processing failed" },
+      });
       return null;
     }
     if (
@@ -226,6 +234,15 @@ export async function processMediaJob(
             processingStatus: failed ? "FAILED" : "UPLOADED",
             processingError: failed ? "Media could not be processed" : null,
           },
+        });
+      if (changed.count && failed)
+        await tx.upload.updateMany({
+          where: {
+            mediaId: job.mediaId,
+            ownerId: job.media.ownerId,
+            status: { in: ["UPLOADED", "PROCESSING"] },
+          },
+          data: { status: "FAILED", errorMessage: "Media processing failed" },
         });
     });
   } finally {

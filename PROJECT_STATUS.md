@@ -1,7 +1,7 @@
 # PrivateFlix — Project Status
 
 Updated: 2026-10-28.
-Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and the installed 21st MCP. Google Drive is connected and verified on this workstation. History/resume, account/session settings, metadata editing and playlists are implemented and verified in production and development browsers. Additional Phase 7 work is listed below. Optional HLS/transcoding remains disabled; production deployment is not yet complete.
+Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and the installed 21st MCP. Google Drive is connected and verified on this workstation. History/resume, account/session settings, metadata editing, playlists, advanced filters, photo navigation/zoom, bulk organization, permanent deletion and processing retry are implemented and verified. Additional Phase 7 work is listed below. Optional HLS/transcoding remains disabled; production deployment is not yet complete.
 
 ## Implemented
 
@@ -22,10 +22,14 @@ Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and t
 - Owner preferences for dark/light appearance, playback speed and autoplay; password changes, active-session revocation and safe system diagnostics. Unavailable transcoding and backup controls remain labeled.
 - Title/description/tag editing with normalized private tags, description/tag search and longest-first sorting. Original media and extracted metadata are preserved.
 - Private video playlists with persisted ordering, add/remove, editing, grouping-only deletion, previous/next playback and optional autoplay advancement.
+- Advanced upload date/format/duration/watch-status filters and stable recently-watched sorting, with duration/date/collection summaries on media cards.
+- Photo fit/zoom, keyboard panning/navigation, fullscreen and ready-media navigation within the current filtered page. Viewer controls include favorites, metadata editing and confirmed deletion.
+- Page-scoped multiple selection, bulk favorites, tag add/replace/remove and collection add/move/unfile. Transactions reject unavailable selections without partial updates. Confirmed permanent deletion hides media immediately and queues original/derivative cleanup with durable retries; grouping-only deletion remains separate.
+- Owner processing retry for verified originals after terminal metadata failures, with state/ownership rechecks, bounded new jobs, cooldown and daily caps. Settings expose pending deletion and failed cleanup counts. Terminal worker failures now update upload receipts, and deletion handles older terminal receipts safely.
 
 ## Remaining
 
-Remaining Phase 7 work includes advanced date/format/duration filters and recently watched sorting; bulk selection, organization and media deletion; photo zoom and previous/next navigation; multiple-file upload queues, drag/drop and processing retry controls; collection covers/order and nesting where practical; and dashboard summaries/login password visibility. These are not claimed complete by the implemented history/settings/playlist checkpoint.
+Remaining Phase 7 work includes multiple-file upload queues, drag/drop and upload history; collection covers/order and nesting where practical; and dashboard summaries/login password visibility. These are not claimed complete by the implemented library/viewer checkpoint.
 
 Optional transcoding and protected HLS remain unimplemented; keep `ENABLE_TRANSCODING=false`. Ready files can play when supported by the browser, with original download available for other codecs. The library checks pending processing states every five seconds while visible and idle; manual Refresh also updates pending uploads.
 
@@ -38,6 +42,7 @@ Before production: reconcile orphaned multipart uploads and thumbnails, handle c
 - [Streaming, playback and local preview](docs/STREAMING.md)
 - [Google Drive storage and account setup](docs/GOOGLE_DRIVE.md)
 - [Interactive library and organization API](docs/LIBRARY_ORGANIZATION.md)
+- [Filters, photo viewing, bulk changes and deletion/retry](docs/LIBRARY_WORKFLOWS.md)
 - [Viewing history and owner settings](docs/HISTORY_SETTINGS.md)
 - [Playlists and media metadata](docs/PLAYLISTS_METADATA.md)
 - [Multipart API contract](docs/MULTIPART_API.md)
@@ -56,3 +61,5 @@ Playback follow-up: fixed a development-only Strict Mode lifecycle bug that remo
 Drive live verification — 2026-10-28: the owner-approved Google connection is active in ignored `.env`, and app/worker were restarted. A synthetic H.264 video reached READY with original and thumbnail in Drive, verified checksums/revisions and reclaimed staging. Browser playback, SHA-256-matched download and an exact 128-byte retained-revision range (206) passed; anonymous thumbnail/stream/download access returned 401. The owner Storage panel now verifies live folder privacy and displays quota. OAuth remains in Google Testing state, which can expire authorization after seven days; deployment/publishing and backup reliability remain pending. Eleven focused storage-status unit tests passed, and the current broader unit/database suite also passed.
 
 Phase 7 continuity/organization checkpoint — 2026-10-28: 314 unit/database checks and three live processing checks passed on isolated PostgreSQL/MinIO. Three browser scenarios passed in both production and development, covering private playback, seeking/downloads, playlist ordering/navigation/deletion, metadata failed-save feedback/search, history/resume and failed-save recovery, persistent preferences, password rotation, session revocation, and 375px/390px/landscape layouts. Production build/typecheck, lint, formatting and whitespace checks passed. Visual review covered synthetic media and dark/light layouts. Browser testing caught and fixed a history-clear button incorrectly disabled by an empty Continue Watching view; test synchronization now waits for saved positions before closing. Disposable test app configuration explicitly disables live Drive credentials, and the real owner account/storage was preserved.
+
+Phase 7 filtering/viewer/bulk checkpoint — 2026-10-28: 353 unit/database checks passed on isolated PostgreSQL 16. Five browser scenarios passed in both production and development, covering advanced filters, photo zoom/keyboard/fullscreen, bulk favorites/tags/collections, nested viewer dialogs, confirmed deletion and real-worker processing retry alongside earlier playback/history/settings/playlist flows. Four live checks passed with a freshly built worker, including terminal failure receipts and physical deletion of synthetic originals/thumbnails/previews from MinIO. Production build/typecheck, lint, formatting and whitespace checks passed; mobile photo/deletion and landscape screenshots were visually reviewed. Test fixtures were corrected for the database's enforced single-owner constraint and the search input's accessible role. The verification runner now rebuilds the worker before live checks and supports an explicit worker-only focus. No live owner media was deleted and credentials remain outside Git.

@@ -115,6 +115,9 @@ describe.skipIf(!enabled)("processing leases and state transitions", () => {
   });
   it("retries decoder failures then fails without deleting the original", async () => {
     const { media, job } = await fixture();
+    const upload = await prisma.upload.create({
+      data: { ownerId, mediaId: media.id, status: "UPLOADED" },
+    });
     state.fail = true;
     for (let i = 0; i < 4; i++) await processMediaJob(job.id, workspace);
     expect(
@@ -123,6 +126,10 @@ describe.skipIf(!enabled)("processing leases and state transitions", () => {
     expect(
       await prisma.media.findUnique({ where: { id: media.id } }),
     ).toMatchObject({ processingStatus: "FAILED" });
+    expect(
+      (await prisma.upload.findUniqueOrThrow({ where: { id: upload.id } }))
+        .status,
+    ).toBe("FAILED");
     expect(storage.deleteObject).not.toHaveBeenCalled();
     expect(storage.putObject).not.toHaveBeenCalled();
   });

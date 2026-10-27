@@ -23,6 +23,8 @@ const systemSchema = z.object({
   libraryItems: z.number(),
   libraryBytes: z.number(),
   failedMedia: z.number(),
+  pendingDeletions: z.number(),
+  failedCleanup: z.number(),
   thumbnailGeneration: z.string(),
   transcoding: z.string(),
   backup: z.string(),
@@ -488,6 +490,14 @@ export function AccountSettings({
             <div>
               <dt>Media needing attention</dt>
               <dd>{system.failedMedia}</dd>
+            </div>
+            <div>
+              <dt>Pending media deletions</dt>
+              <dd>{system.pendingDeletions}</dd>
+            </div>
+            <div>
+              <dt>Cleanup jobs needing attention</dt>
+              <dd>{system.failedCleanup}</dd>
             </div>
             <div>
               <dt>Thumbnails</dt>

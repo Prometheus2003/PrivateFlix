@@ -177,6 +177,151 @@ describe.skipIf(!enabled)(
     afterAll(async () => {
       await prisma.$disconnect();
     });
+    async function seedViewing() {
+      await prisma.media.update({
+        where: { id: firstId },
+        data: { duration: 15 },
+      });
+      await prisma.media.update({
+        where: { id: thirdId },
+        data: { duration: 100 },
+      });
+      await prisma.playbackProgress.createMany({
+        data: [
+          {
+            userId: ownerId,
+            mediaId: firstId,
+            positionSeconds: 15,
+            durationSeconds: 15,
+            completed: true,
+            lastPlayedAt: new Date("2026-10-10T00:00:00Z"),
+          },
+          {
+            userId: ownerId,
+            mediaId: thirdId,
+            positionSeconds: 20,
+            durationSeconds: 100,
+            completed: false,
+            lastPlayedAt: new Date("2026-10-09T00:00:00Z"),
+          },
+        ],
+      });
+    }
+    it("sorts recently watched before unwatched media with stable bounded pagination", async () => {
+      await seedViewing();
+      const body = await (await list("sort=recent")).json();
+      expect(body.media.map((item: { id: string }) => item.id)).toEqual([
+        firstId,
+        thirdId,
+        secondId,
+      ]);
+      expect(body.total).toBe(3);
+      const page = await (await list("sort=recent&limit=1&page=2")).json();
+      expect(page.media.map((item: { id: string }) => item.id)).toEqual([
+        thirdId,
+      ]);
+      expect(page.hasMore).toBe(true);
+    });
+    it("combines date, format and duration filters in normal and recent ordering", async () => {
+      await seedViewing();
+      for (const sort of ["newest", "recent"]) {
+        expect(
+          (
+            await (
+              await list(
+                `sort=${sort}&format=mp4&minDuration=30&maxDuration=120`,
+              )
+            ).json()
+          ).media.map((item: { id: string }) => item.id),
+        ).toEqual([thirdId]);
+        expect(
+          (
+            await (
+              await list(
+                `sort=${sort}&from=2026-10-02T00:00:00Z&to=2026-10-03T00:00:00Z`,
+              )
+            ).json()
+          ).media.map((item: { id: string }) => item.id),
+        ).toEqual([secondId]);
+        expect(
+          (await (await list(`sort=${sort}&format=png&type=VIDEO`)).json())
+            .media,
+        ).toHaveLength(0);
+      }
+    });
+    it("applies viewing state to owned videos in both sort implementations", async () => {
+      await seedViewing();
+      for (const sort of ["newest", "recent"]) {
+        for (const [watch, id] of [
+          ["watched", firstId],
+          ["started", thirdId],
+          ["unwatched", thirdId],
+        ]) {
+          const body = await (await list(`sort=${sort}&watch=${watch}`)).json();
+          expect(body.media.map((item: { id: string }) => item.id)).toEqual([
+            id,
+          ]);
+          expect(body.total).toBe(1);
+        }
+      }
+    });
+    it("keeps literal search, collection and favorite checks in recent sorting", async () => {
+      await seedViewing();
+      await setFavorite(firstId, true);
+      const group = await collection();
+      await setMembership(group.id, thirdId, true);
+      expect(
+        (
+          await (
+            await list(`sort=recent&q=${encodeURIComponent("100%_")}`)
+          ).json()
+        ).media.map((item: { id: string }) => item.id),
+      ).toEqual([secondId]);
+      expect(
+        (await (await list("sort=recent&favorite=true")).json()).media.map(
+          (item: { id: string }) => item.id,
+        ),
+      ).toEqual([firstId]);
+      expect(
+        (
+          await (await list(`sort=recent&collection=${group.id}`)).json()
+        ).media.map((item: { id: string }) => item.id),
+      ).toEqual([thirdId]);
+      await editDetails(
+        request(`/api/media/${firstId}`, "PATCH", {
+          title: "Alpha sunset",
+          description: "Evening air",
+          tags: ["summertime"],
+        }),
+        context(firstId),
+      );
+      expect(
+        (await (await list("sort=recent&q=summertime")).json()).media.map(
+          (item: { id: string }) => item.id,
+        ),
+      ).toEqual([firstId]);
+      expect(
+        (
+          await (
+            await list(
+              `sort=recent&q=${encodeURIComponent("'; DROP TABLE media; --")}`,
+            )
+          ).json()
+        ).media,
+      ).toHaveLength(0);
+      expect(await prisma.media.count()).toBe(4);
+    });
+    it.each([
+      "format=exe",
+      "from=not-a-date",
+      "from=2026-10-03T00:00:00Z&to=2026-10-02T00:00:00Z",
+      "minDuration=-1",
+      "maxDuration=Infinity",
+      "minDuration=20&maxDuration=10",
+      "watch=foreign",
+    ])("rejects invalid advanced library filters %s", async (query) => {
+      expect((await list(query)).status).toBe(400);
+    });
     it("protects metadata reads and writes and rejects cross-origin edits", async () => {
       expect(
         (

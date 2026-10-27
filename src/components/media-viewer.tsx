@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import { PhotoViewer } from "./photo-viewer";
+import { MediaOwnerControls } from "./media-owner-controls";
 import { z } from "zod";
 import { ownerApi, ownerJson, OwnerApiError } from "@/client/api";
 import { Button } from "./ui/button";
@@ -344,13 +345,12 @@ export function MediaViewer({
           </div>
         </>
       ) : (
-        <Image
-          src={`/api/media/${media.id}/stream`}
-          alt={media.title}
-          width={1600}
-          height={1200}
-          unoptimized
-          onError={() => setError(true)}
+        <PhotoViewer
+          media={media}
+          busy={closing}
+          onPrevious={onPrevious ? () => void close(onPrevious) : undefined}
+          onNext={onNext ? () => void close(onNext) : undefined}
+          onClose={() => void close()}
         />
       )}
       {error && (
@@ -383,6 +383,16 @@ export function MediaViewer({
         <a href={`/api/media/${media.id}/download`}>Download original</a>
         <p>Private playback · Your original stays in your library</p>
       </div>
+      <MediaOwnerControls
+        media={media}
+        onUnauthorized={onUnauthorized}
+        onDeleting={() => video.current?.pause()}
+        onDeleted={() => {
+          played.current = false;
+          pending.current = null;
+          onClose();
+        }}
+      />
     </dialog>
   );
 }

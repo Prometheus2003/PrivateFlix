@@ -296,6 +296,57 @@ test("history resumes playback and owner settings persist with working security 
     ).toBeVisible();
     await page.getByLabel("Search your library", { exact: true }).fill("");
     await expect(page.getByRole("article")).toHaveCount(libraryCount);
+    const library = page.getByRole("region", {
+      name: "Your media",
+      exact: true,
+    });
+    await library
+      .locator("summary")
+      .filter({ hasText: "More filters" })
+      .click();
+    const localDate = await page.evaluate((iso) => {
+      const date = new Date(iso);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    }, media.createdAt.toISOString());
+    await library
+      .getByLabel("File format", { exact: true })
+      .selectOption("mp4");
+    await library.getByLabel("Uploaded from", { exact: true }).fill(localDate);
+    await library
+      .getByLabel("Uploaded through", { exact: true })
+      .fill(localDate);
+    await library.getByLabel("Minimum minutes", { exact: true }).fill("0.1");
+    await library.getByLabel("Maximum minutes", { exact: true }).fill("1");
+    await library
+      .getByRole("button", { name: "Apply filters", exact: true })
+      .click();
+    await expect(library.getByRole("article")).toHaveCount(1);
+    await expect(
+      library.getByRole("heading", {
+        name: "Edited fixture video",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await library.getByLabel("Minimum minutes", { exact: true }).fill("2");
+    await library
+      .getByRole("button", { name: "Apply filters", exact: true })
+      .click();
+    await expect(
+      library.getByText("Minimum duration must not exceed maximum duration.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await library
+      .getByRole("button", { name: "Reset extra filters", exact: true })
+      .click();
+    await expect(library.getByRole("article")).toHaveCount(libraryCount);
+    await expect(
+      library.getByLabel("Uploaded from", { exact: true }),
+    ).toHaveValue("");
+    await library
+      .locator("summary")
+      .filter({ hasText: "More filters" })
+      .click();
     await page.getByRole("button", { name: "Play video", exact: true }).click();
     const player = page.locator("video");
     await expect(page.getByText("Loading your saved position…")).toHaveCount(
@@ -361,6 +412,12 @@ test("history resumes playback and owner settings persist with working security 
           )?.positionSeconds,
       )
       .toBeGreaterThanOrEqual(3);
+    await library
+      .getByLabel("Sort media", { exact: true })
+      .selectOption("recent");
+    await expect(library.getByRole("article").first()).toContainText(
+      "Edited fixture video",
+    );
     const history = page.getByRole("region", {
       name: "Your viewing",
       exact: true,

@@ -18,6 +18,8 @@ if (!database || new URL(database).pathname !== "/privateflix_security_test") {
       "tests/integration/streaming.test.ts",
       "tests/integration/drive-registry.test.ts",
       "tests/integration/library.test.ts",
+      "tests/integration/bulk.test.ts",
+      "tests/integration/retry.test.ts",
       "tests/integration/history-settings.test.ts",
       "tests/integration/playlists.test.ts",
     ],

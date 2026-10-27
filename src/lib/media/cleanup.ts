@@ -120,6 +120,9 @@ export async function runUploadMaintenance(now = new Date()) {
           ownerId: true,
           processingStatus: true,
           storageKey: true,
+          thumbnailStorageKey: true,
+          previewStorageKey: true,
+          deletedAt: true,
         },
       });
       // Stale cleanup intent must never delete a successful or still-active media item.
@@ -148,6 +151,86 @@ export async function runUploadMaintenance(now = new Date()) {
           }
         }
         await storage.deleteObject(media.storageKey);
+      }
+      if (media?.processingStatus === "DELETING" && media.deletedAt) {
+        const uploads = await prisma.upload.findMany({
+          where: { mediaId: media.id, ownerId: media.ownerId },
+          select: { id: true, status: true, storageUploadId: true },
+          take: 101,
+        });
+        if (
+          uploads.length > 100 ||
+          uploads.some((upload) =>
+            ["PENDING", "UPLOADING", "UPLOADED", "PROCESSING"].includes(
+              upload.status,
+            ),
+          )
+        )
+          throw new Error("Deletion has an active upload");
+        if (
+          await prisma.processingJob.findFirst({
+            where: {
+              mediaId: media.id,
+              type: { not: "CLEANUP" },
+              status: "PROCESSING",
+              leaseExpiresAt: { gt: now },
+            },
+            select: { id: true },
+          })
+        )
+          throw new Error("Deletion has an active processor");
+        for (const upload of uploads) {
+          if (
+            upload.storageUploadId &&
+            ["FAILED", "CANCELLED"].includes(upload.status)
+          ) {
+            try {
+              await storage.abortMultipartUpload(
+                media.storageKey,
+                upload.storageUploadId,
+              );
+            } catch (error) {
+              if (!(error instanceof Error && error.name === "NoSuchUpload"))
+                throw error;
+            }
+          }
+        }
+        const keys = [
+          ...new Set(
+            [
+              media.storageKey,
+              media.thumbnailStorageKey,
+              media.previewStorageKey,
+            ].filter((key): key is string => Boolean(key)),
+          ),
+        ];
+        for (const key of keys) await storage.deleteObject(key);
+        // Physical I/O completed. Remove related rows only after every original
+        // and derivative was removed; failed passes retain durable retry intent.
+        await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(7253407)`;
+          const removed = await tx.media.deleteMany({
+            where: {
+              id: media.id,
+              ownerId: media.ownerId,
+              processingStatus: "DELETING",
+              deletedAt: { not: null },
+            },
+          });
+          if (removed.count) {
+            await tx.tag.deleteMany({
+              where: { ownerId: media.ownerId, mediaTags: { none: {} } },
+            });
+            await tx.auditEvent.create({
+              data: {
+                userId: media.ownerId,
+                action: "media_deleted",
+                resourceType: "media",
+                resourceId: media.id,
+              },
+            });
+          }
+        });
       }
       await prisma.processingJob.updateMany({
         where: {

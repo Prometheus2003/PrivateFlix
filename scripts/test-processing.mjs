@@ -140,12 +140,10 @@ try {
     ["node_modules/prisma/build/index.js", "migrate", "deploy"],
     env,
   );
-  if (process.env.PRIVATEFLIX_TEST_FOCUS !== "browser") {
+  if (!["browser", "worker"].includes(process.env.PRIVATEFLIX_TEST_FOCUS)) {
     await run(process.execPath, ["node_modules/vitest/vitest.mjs", "run"], env);
   } else {
-    console.info(
-      "Browser-focused verification; unit/database suite is not rerun.",
-    );
+    console.info("Focused verification; unit/database suite is not rerun.");
   }
   // Generate actual decoder fixtures with an isolated, credential-free FFmpeg process.
   for (const type of ["png", "mp4"]) {
@@ -200,6 +198,15 @@ try {
     APP_URL: env.APP_URL,
     FFMPEG_TIMEOUT: "30",
   };
+  // Verify the current worker source, rather than a stale locally tagged image.
+  await run(docker, [
+    "build",
+    "--file",
+    "deploy/Dockerfile.worker",
+    "--tag",
+    "privateflix-worker:local",
+    ".",
+  ]);
   await container("worker", [
     "--read-only",
     "--cap-drop",
@@ -233,9 +240,12 @@ try {
       PRIVATEFLIX_FIXTURES: directory,
     },
   );
-  const modes = process.env.PRIVATEFLIX_E2E_MODE
-    ? [process.env.PRIVATEFLIX_E2E_MODE]
-    : ["production", "development"];
+  const modes =
+    process.env.PRIVATEFLIX_TEST_FOCUS === "worker"
+      ? []
+      : process.env.PRIVATEFLIX_E2E_MODE
+        ? [process.env.PRIVATEFLIX_E2E_MODE]
+        : ["production", "development"];
   // Browser verification must exercise this source tree, never a stale build.
   if (modes.includes("production")) {
     await run(
@@ -252,6 +262,8 @@ try {
         "scripts/test-e2e.mjs",
         "tests/e2e/processing.spec.ts",
         "tests/e2e/playlists.spec.ts",
+        "tests/e2e/photos.spec.ts",
+        "tests/e2e/bulk.spec.ts",
       ],
       { ...env, PRIVATEFLIX_E2E_MODE: mode, PRIVATEFLIX_PROCESSING_TEST: "1" },
     );

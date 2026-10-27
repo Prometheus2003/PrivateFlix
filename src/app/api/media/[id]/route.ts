@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth/require-auth";
 import { assertSameOrigin, authError, authFailure } from "@/lib/auth/http";
 import { prisma } from "@/lib/db/prisma";
 import { libraryBody, libraryId, libraryJson } from "@/lib/media/library-http";
+import { mutateMedia } from "@/lib/media/bulk";
 const metadataSchema = z
   .object({
     title: z.string().trim().min(1).max(300),
@@ -29,6 +30,11 @@ export async function GET(request: NextRequest, context: Context) {
         width: true,
         height: true,
         createdAt: true,
+        favorites: {
+          where: { userId: user.id },
+          select: { userId: true },
+          take: 1,
+        },
         mediaTags: {
           where: { tag: { ownerId: user.id } },
           select: { tag: { select: { name: true } } },
@@ -42,10 +48,11 @@ export async function GET(request: NextRequest, context: Context) {
       },
     });
     if (!media) throw authError(404, "Media not found");
-    const { mediaTags, collectionItems, ...summary } = media;
+    const { mediaTags, collectionItems, favorites, ...summary } = media;
     return libraryJson({
       media: {
         ...summary,
+        isFavorite: favorites.length > 0,
         tags: mediaTags.map((item) => item.tag.name),
         collections: collectionItems.map((item) => item.collection),
       },
@@ -108,6 +115,24 @@ export async function PATCH(request: NextRequest, context: Context) {
       });
     });
     return libraryJson({ saved: true });
+  } catch (error) {
+    return authFailure(error);
+  }
+}
+export async function DELETE(request: NextRequest, context: Context) {
+  try {
+    const { user } = await requireAuth(request);
+    assertSameOrigin(request);
+    const id = libraryId((await context.params).id);
+    await libraryBody(request, z.object({ confirm: z.literal(true) }).strict());
+    return libraryJson(
+      await mutateMedia(user.id, {
+        action: "delete",
+        mediaIds: [id],
+        confirm: true,
+      }),
+      202,
+    );
   } catch (error) {
     return authFailure(error);
   }
