@@ -22,6 +22,11 @@ const url = (protocols: string[]) =>
     }, "Unsupported protocol");
 const positive = z.coerce.number().int().positive().safe();
 const formats = z.string().regex(/^[a-z0-9]+(,[a-z0-9]+)*$/);
+const optionalCredential = (schema = z.string().min(1)) =>
+  z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    schema.optional(),
+  );
 export const envSchema = z
   .object({
     DATABASE_URL: url(["postgresql:", "postgres:"]),
@@ -45,13 +50,12 @@ export const envSchema = z
       .regex(/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/),
     S3_REGION: z.string().min(1).default("us-east-1"),
     STORAGE_PROVIDER: z.enum(["s3", "google-drive"]).default("s3"),
-    GOOGLE_DRIVE_CLIENT_ID: z.string().min(1).optional(),
-    GOOGLE_DRIVE_CLIENT_SECRET: z.string().min(1).optional(),
-    GOOGLE_DRIVE_REFRESH_TOKEN: z.string().min(1).optional(),
-    GOOGLE_DRIVE_FOLDER_ID: z
-      .string()
-      .regex(/^[a-zA-Z0-9_-]+$/)
-      .optional(),
+    GOOGLE_DRIVE_CLIENT_ID: optionalCredential(),
+    GOOGLE_DRIVE_CLIENT_SECRET: optionalCredential(),
+    GOOGLE_DRIVE_REFRESH_TOKEN: optionalCredential(),
+    GOOGLE_DRIVE_FOLDER_ID: optionalCredential(
+      z.string().regex(/^[a-zA-Z0-9_-]+$/),
+    ),
     REDIS_URL: url(["redis:", "rediss:"]),
     SESSION_SECRET: secret.refine(
       (v) => /^[a-f0-9]{128}$/i.test(v),

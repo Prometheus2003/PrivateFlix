@@ -8,7 +8,10 @@ import { Button } from "./ui/button";
 const statusSchema = z.object({
   uploadDestination: z.enum(["s3", "google-drive"]),
   driveConfigured: z.boolean(),
-  connectionStatus: z.literal("not-checked"),
+  connectionStatus: z.enum(["not-checked", "connected", "unavailable"]),
+  checkedAt: z.string().nullable(),
+  capacityBytes: z.number().nonnegative().nullable(),
+  usedBytes: z.number().nonnegative().nullable(),
   maxUploadBytes: z.number().positive().safe(),
 });
 type StorageStatus = z.infer<typeof statusSchema>;
@@ -23,12 +26,12 @@ export function StorageSettings() {
     const controller = new AbortController();
     void (async () => {
       try {
-        const response = await fetch("/api/system/storage", {
+        const response = await fetch("/api/system/storage?verify=true", {
           cache: "no-store",
           credentials: "same-origin",
           signal: AbortSignal.any([
             controller.signal,
-            AbortSignal.timeout(15000),
+            AbortSignal.timeout(25000),
           ]),
         });
         if (!response.ok)
@@ -107,10 +110,40 @@ export function StorageSettings() {
               New uploads: {usesDrive ? "Google Drive" : "S3 / MinIO"}
             </p>
             <p className="muted mt-1">
-              {status.driveConfigured
-                ? "Google Drive is configured. Confirm access with a small upload, playback and download."
-                : "Google Drive is not configured yet. Connect your account to use its storage for new uploads."}
+              {status.connectionStatus === "connected"
+                ? "Connected to Google Drive. Your storage folder is private."
+                : status.connectionStatus === "unavailable"
+                  ? "Drive could not be verified. Check your connection and Google authorization, then refresh."
+                  : status.driveConfigured
+                    ? "Google Drive is configured. Confirm access with a small upload, playback and download."
+                    : "Google Drive is not configured yet. Connect your account to use its storage for new uploads."}
             </p>
+            {status.connectionStatus === "connected" &&
+              status.capacityBytes !== null && (
+                <p className="mt-3 font-semibold">
+                  {(status.capacityBytes / 1024 ** 4).toLocaleString(
+                    undefined,
+                    { maximumFractionDigits: 2 },
+                  )}{" "}
+                  TiB account capacity
+                  {status.usedBytes !== null && (
+                    <span className="muted font-normal">
+                      {" "}
+                      ·{" "}
+                      {(status.usedBytes / 1024 ** 3).toLocaleString(
+                        undefined,
+                        { maximumFractionDigits: 2 },
+                      )}{" "}
+                      GiB used across your Google account
+                    </span>
+                  )}
+                </p>
+              )}
+            {status.checkedAt && (
+              <p className="muted text-sm">
+                Last checked {new Date(status.checkedAt).toLocaleTimeString()}
+              </p>
+            )}
             <p className="muted mt-1">
               File limit:{" "}
               {(status.maxUploadBytes / 1024 ** 3).toLocaleString(undefined, {

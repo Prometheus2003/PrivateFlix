@@ -91,7 +91,9 @@ folder can remain in Drive; failed setup does not enable Drive in `.env`.
   mapping. Removing credentials or revoking Google consent prevents access until
   restored. This implementation is for a personal My Drive folder, not shared drives.
 - Drive account capacity does not remove API quotas, transfer limits or bandwidth
-  limits. Your account's 15 TB allocation has not yet been checked through Google.
+  limits. The owner-only Storage panel refreshes actual account quota and verifies
+  authorization/folder privacy. The capacity Google returns for the connected
+  account is authoritative; an expected subscription allocation can differ.
   The current PrivateFlix per-file limit remains 10 GiB, and Drive transfer attempts
   time out after ten minutes. Slower large uploads may require a later resumable
   transfer worker enhancement.
@@ -100,3 +102,19 @@ References: [resumable uploads](https://developers.google.com/workspace/drive/ap
 [range downloads](https://developers.google.com/workspace/drive/api/guides/manage-downloads),
 [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth),
 [usage limits](https://developers.google.com/workspace/drive/api/guides/limits).
+
+## Workstation live connection verification — 2026-10-28
+
+The owner approved `drive.file` consent. The connector created and verified an
+owner-only folder, then atomically enabled Drive in ignored `.env`. App and worker
+were restarted with that configuration. A synthetic 12-second H.264 MP4 uploaded
+and reached READY; both original and thumbnail have verified Drive mappings and
+retained revisions, with temporary staging reclaimed. Browser playback worked,
+the original download matched SHA-256, and a retained-revision request for bytes
+128–255 returned 206 with the exact 128 original bytes. Anonymous thumbnail,
+stream and download requests returned 401. Existing S3 media was preserved.
+
+The OAuth app remains in Google's Testing state. Its authorization can expire
+after seven days; review the publishing guidance above before relying on it for
+unattended long-term storage. Credentials and downloaded client JSON remain local
+and must not be included in Git or screenshots.

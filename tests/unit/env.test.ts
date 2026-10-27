@@ -10,6 +10,20 @@ const valid = {
   SESSION_SECRET: "c".repeat(128),
 };
 describe("runtime configuration", () => {
+  it("treats explicitly disabled optional Drive credentials as absent while enforcing them for Drive uploads", () => {
+    const disabled = {
+      GOOGLE_DRIVE_CLIENT_ID: "",
+      GOOGLE_DRIVE_CLIENT_SECRET: "",
+      GOOGLE_DRIVE_REFRESH_TOKEN: "",
+      GOOGLE_DRIVE_FOLDER_ID: "",
+    };
+    expect(
+      parseEnv({ ...valid, ...disabled }).GOOGLE_DRIVE_REFRESH_TOKEN,
+    ).toBeUndefined();
+    expect(() =>
+      parseEnv({ ...valid, ...disabled, STORAGE_PROVIDER: "google-drive" }),
+    ).toThrow("GOOGLE_DRIVE_REFRESH_TOKEN");
+  });
   it("loads development defaults and parses false correctly", () => {
     const result = parseEnv(valid);
     expect(result.ENABLE_TRANSCODING).toBe(false);

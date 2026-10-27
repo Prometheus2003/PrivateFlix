@@ -64,6 +64,9 @@ describe("owner storage configuration status", () => {
       uploadDestination: "s3",
       driveConfigured: false,
       connectionStatus: "not-checked",
+      checkedAt: null,
+      capacityBytes: null,
+      usedBytes: null,
       maxUploadBytes: 10737418240,
     });
   });
@@ -81,6 +84,9 @@ describe("owner storage configuration status", () => {
       uploadDestination: "google-drive",
       driveConfigured: true,
       connectionStatus: "not-checked",
+      checkedAt: null,
+      capacityBytes: null,
+      usedBytes: null,
       maxUploadBytes: 10737418240,
     });
   });
