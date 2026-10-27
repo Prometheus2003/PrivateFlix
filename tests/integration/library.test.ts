@@ -22,6 +22,10 @@ import {
   DELETE as deleteCollection,
 } from "@/app/api/collections/[id]/route";
 import { PUT as membership } from "@/app/api/collections/[id]/items/route";
+import {
+  GET as details,
+  PATCH as editDetails,
+} from "@/app/api/media/[id]/route";
 
 const enabled = process.env.PRIVATEFLIX_SECURITY_TEST === "1";
 let ownerId = "",
@@ -172,6 +176,155 @@ describe.skipIf(!enabled)(
     });
     afterAll(async () => {
       await prisma.$disconnect();
+    });
+    it("protects metadata reads and writes and rejects cross-origin edits", async () => {
+      expect(
+        (
+          await details(
+            request(`/api/media/${firstId}`, "GET", undefined, { cookie: "" }),
+            context(firstId),
+          )
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await editDetails(
+            request(
+              `/api/media/${firstId}`,
+              "PATCH",
+              { title: "Changed", description: "", tags: [] },
+              { cookie: "" },
+            ),
+            context(firstId),
+          )
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await editDetails(
+            request(
+              `/api/media/${firstId}`,
+              "PATCH",
+              { title: "Changed", description: "", tags: [] },
+              { origin: "https://evil.test" },
+            ),
+            context(firstId),
+          )
+        ).status,
+      ).toBe(403);
+    });
+    it("edits safe metadata and normalized tags without exposing storage or extracted metadata", async () => {
+      const response = await editDetails(
+        request(`/api/media/${firstId}`, "PATCH", {
+          title: "Edited title",
+          description: "Evening in the mountains",
+          tags: [" Travel ", "travel", "Holidays"],
+        }),
+        context(firstId),
+      );
+      expect(response.status).toBe(200);
+      const fetched = await details(
+        request(`/api/media/${firstId}`),
+        context(firstId),
+      );
+      const body = await fetched.json();
+      expect(body.media.title).toBe("Edited title");
+      expect(body.media.tags.sort()).toEqual(["holidays", "travel"]);
+      expect(JSON.stringify(body)).not.toMatch(
+        /storageKey|checksum|metadata|ownerId/,
+      );
+      expect(fetched.headers.get("cache-control")).toBe("private, no-store");
+      expect(
+        (await (await list("q=mountains")).json()).media.map(
+          (item: { id: string }) => item.id,
+        ),
+      ).toEqual([firstId]);
+      expect(
+        (await (await list("q=HOLIDAYS")).json()).media.map(
+          (item: { id: string }) => item.id,
+        ),
+      ).toEqual([firstId]);
+    });
+    it("validates metadata fields and rejects missing or deleted resources", async () => {
+      for (const data of [
+        { title: "", description: "", tags: [] },
+        { title: "Valid", description: "", tags: Array(21).fill("tag") },
+        { title: "Valid", description: "", tags: [], ownerId: "forged" },
+      ])
+        expect(
+          (
+            await editDetails(
+              request(`/api/media/${firstId}`, "PATCH", data),
+              context(firstId),
+            )
+          ).status,
+        ).toBe(400);
+      for (const id of [deletedId, randomUUID()]) {
+        expect(
+          (await details(request(`/api/media/${id}`), context(id))).status,
+        ).toBe(404);
+        expect(
+          (
+            await editDetails(
+              request(`/api/media/${id}`, "PATCH", {
+                title: "No",
+                description: "",
+                tags: [],
+              }),
+              context(id),
+            )
+          ).status,
+        ).toBe(404);
+      }
+    });
+    it("removes unused tags without changing other media tags or original keys", async () => {
+      const before = await prisma.media.findUniqueOrThrow({
+        where: { id: firstId },
+        select: { storageKey: true },
+      });
+      for (const id of [firstId, thirdId])
+        await editDetails(
+          request(`/api/media/${id}`, "PATCH", {
+            title: "Shared",
+            description: "",
+            tags: ["shared"],
+          }),
+          context(id),
+        );
+      await editDetails(
+        request(`/api/media/${firstId}`, "PATCH", {
+          title: "Shared",
+          description: "",
+          tags: [],
+        }),
+        context(firstId),
+      );
+      expect(
+        await prisma.tag.count({ where: { ownerId, name: "shared" } }),
+      ).toBe(1);
+      expect(await prisma.mediaTag.count({ where: { mediaId: thirdId } })).toBe(
+        1,
+      );
+      expect(
+        (await prisma.media.findUniqueOrThrow({ where: { id: firstId } }))
+          .storageKey,
+      ).toBe(before.storageKey);
+    });
+    it("sorts videos by descending duration while leaving unknown duration last", async () => {
+      await prisma.media.update({
+        where: { id: firstId },
+        data: { duration: 15 },
+      });
+      await prisma.media.update({
+        where: { id: thirdId },
+        data: { duration: 100 },
+      });
+      const body = await (await list("sort=duration")).json();
+      expect(body.media.map((item: { id: string }) => item.id)).toEqual([
+        thirdId,
+        firstId,
+        secondId,
+      ]);
     });
 
     it("protects all organization endpoints before reading or mutating owner data", async () => {

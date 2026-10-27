@@ -94,7 +94,13 @@ try {
   ]);
   const env = {
     ...process.env,
+    STORAGE_PROVIDER: "s3",
+    GOOGLE_DRIVE_CLIENT_ID: "",
+    GOOGLE_DRIVE_CLIENT_SECRET: "",
+    GOOGLE_DRIVE_REFRESH_TOKEN: "",
+    GOOGLE_DRIVE_FOLDER_ID: "",
     NODE_ENV: "test",
+    PRIVATEFLIX_BUILD_DIR: ".next-verify",
     PRIVATEFLIX_SECURITY_TEST: "1",
     DATABASE_URL: `postgresql://privateflix:${password}@127.0.0.1:55434/privateflix_security_test`,
     S3_ENDPOINT: "http://127.0.0.1:19000",
@@ -134,7 +140,13 @@ try {
     ["node_modules/prisma/build/index.js", "migrate", "deploy"],
     env,
   );
-  await run(process.execPath, ["node_modules/vitest/vitest.mjs", "run"], env);
+  if (process.env.PRIVATEFLIX_TEST_FOCUS !== "browser") {
+    await run(process.execPath, ["node_modules/vitest/vitest.mjs", "run"], env);
+  } else {
+    console.info(
+      "Browser-focused verification; unit/database suite is not rerun.",
+    );
+  }
   // Generate actual decoder fixtures with an isolated, credential-free FFmpeg process.
   for (const type of ["png", "mp4"]) {
     const args =
@@ -142,7 +154,7 @@ try {
         ? ["-frames:v", "1", "-c:v", "png", "-f", "image2pipe"]
         : [
             "-t",
-            "1",
+            "12",
             "-c:v",
             "libx264",
             "-movflags",
@@ -224,11 +236,23 @@ try {
   const modes = process.env.PRIVATEFLIX_E2E_MODE
     ? [process.env.PRIVATEFLIX_E2E_MODE]
     : ["production", "development"];
+  // Browser verification must exercise this source tree, never a stale build.
+  if (modes.includes("production")) {
+    await run(
+      process.execPath,
+      ["node_modules/next/dist/bin/next", "build", "--webpack"],
+      { ...env, NODE_ENV: "production" },
+    );
+  }
   for (const mode of modes) {
     console.info("Playback browser verification: " + mode);
     await run(
       process.execPath,
-      ["scripts/test-e2e.mjs", "tests/e2e/processing.spec.ts"],
+      [
+        "scripts/test-e2e.mjs",
+        "tests/e2e/processing.spec.ts",
+        "tests/e2e/playlists.spec.ts",
+      ],
       { ...env, PRIVATEFLIX_E2E_MODE: mode, PRIVATEFLIX_PROCESSING_TEST: "1" },
     );
   }

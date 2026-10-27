@@ -11,6 +11,19 @@
   --control-border: #62616e;
   --error-text: #ffabb7;
 }
+:root[data-theme="light"] {
+  --background: #f7f7fa;
+  --foreground: #20202a;
+  --accent: #6d3bd1;
+  --muted: #5c5c6c;
+  --border: #d2d2dd;
+  --surface: #ffffff;
+  --surface-hover: #efedf6;
+  --accent-surface: #eee7fc;
+  --control-border: #858492;
+  --error-text: #a11d37;
+  color-scheme: light;
+}
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

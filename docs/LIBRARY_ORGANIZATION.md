@@ -29,8 +29,9 @@ All endpoints require the authenticated owner and return private, noncached JSON
   honor reduced-motion preferences.
 
 The grid/list choice and current filters are local UI state; favorite and
-collection changes are persisted. Nested collections, playback history/resume,
-tags, playlists, bulk editing and account/session settings UI remain future work.
+collection changes are persisted. Playback history/resume and account/session
+settings are described in [History and settings](HISTORY_SETTINGS.md). Nested
+collections, tags, playlists and bulk editing remain further Phase 7 work.
 
 ## API contract
 

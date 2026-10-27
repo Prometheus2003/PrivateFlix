@@ -29,6 +29,13 @@ const server = launch(
   ],
   {
     ...process.env,
+    // Never let a disposable test server inherit an owner's live Drive setup
+    // from the workstation's .env file.
+    STORAGE_PROVIDER: "s3",
+    GOOGLE_DRIVE_CLIENT_ID: "",
+    GOOGLE_DRIVE_CLIENT_SECRET: "",
+    GOOGLE_DRIVE_REFRESH_TOKEN: "",
+    GOOGLE_DRIVE_FOLDER_ID: "",
     NODE_ENV:
       process.env.PRIVATEFLIX_E2E_MODE === "development"
         ? "development"
@@ -39,13 +46,25 @@ const server = launch(
   ["ignore", "pipe", "pipe"],
 );
 server.child.stdout.resume();
-server.child.stderr.resume();
+let startupError = "";
+server.child.stderr.on("data", (chunk) => {
+  startupError = (startupError + chunk.toString()).slice(-4096);
+});
 let runner;
 try {
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt++) {
-    if (server.child.exitCode !== null)
-      throw new Error("E2E server exited before startup");
+    if (server.child.exitCode !== null) {
+      const fields = startupError.match(
+        /Invalid environment configuration: ([A-Z0-9_, ]+)/,
+      )?.[1];
+      const hint = fields
+        ? ` Invalid configuration fields: ${fields}.`
+        : startupError.includes("EADDRINUSE")
+          ? " Test port 3319 is occupied."
+          : "";
+      throw new Error(`E2E server exited before startup.${hint}`);
+    }
     try {
       const response = await fetch("http://127.0.0.1:3319", {
         signal: AbortSignal.timeout(1000),
@@ -70,9 +89,9 @@ try {
   ]);
   const code = await Promise.race([
     runner.exited,
-    delay(120000, 124, { ref: false }),
+    delay(180000, 124, { ref: false }),
   ]);
-  if (code === 124) console.error("E2E runner exceeded its 120-second limit");
+  if (code === 124) console.error("E2E runner exceeded its 180-second limit");
   process.exitCode = code;
 } finally {
   await stop(runner);

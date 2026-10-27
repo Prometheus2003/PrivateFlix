@@ -1,7 +1,7 @@
 # PrivateFlix — Project Status
 
 Updated: 2026-10-28.
-Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and the installed 21st MCP. Google Drive is connected and verified on this workstation. History/resume, account/session settings, metadata editing and playlists are being completed and verified. Optional HLS/transcoding remains disabled; production deployment is not yet complete.
+Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and the installed 21st MCP. Google Drive is connected and verified on this workstation. History/resume, account/session settings, metadata editing and playlists are implemented and verified in production and development browsers. Additional Phase 7 work is listed below. Optional HLS/transcoding remains disabled; production deployment is not yet complete.
 
 ## Implemented
 
@@ -18,9 +18,16 @@ Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and t
 - Owner-only storage settings panel with configuration status, live authorization/private-folder checks, account quota and setup guidance. Checks have a provider deadline and a thirty-second cache. Local connection command uses PKCE/state and saves credentials atomically in ignored `.env`; it preserves existing Drive connections and never prints tokens.
 - Interactive library above the upload form: debounced literal search, video/photo/favorite/collection filters, stable sorting and pagination, grid/list layouts, saved favorites, collection creation/editing/membership and confirmed grouping-only deletion. Native accessible dialogs, mutation error feedback, responsive controls and quiet processing-status refresh are included. Organization APIs use existing database models; no migration is needed.
 
+- Private Continue Watching/Recently Watched history, serialized position saves, resume choices, watched/unwatched controls and confirmed history clearing. Failed saves can be retried without pretending they succeeded.
+- Owner preferences for dark/light appearance, playback speed and autoplay; password changes, active-session revocation and safe system diagnostics. Unavailable transcoding and backup controls remain labeled.
+- Title/description/tag editing with normalized private tags, description/tag search and longest-first sorting. Original media and extracted metadata are preserved.
+- Private video playlists with persisted ordering, add/remove, editing, grouping-only deletion, previous/next playback and optional autoplay advancement.
+
 ## Remaining
 
-Remaining frontend work: playback history/resume and account/session settings. Tags, playlists, nested collections and bulk editing remain future work. Optional transcoding and protected HLS remain unimplemented; keep `ENABLE_TRANSCODING=false`. Ready files can play when supported by the browser, with original download available for other codecs. The library checks pending processing states every five seconds while visible and idle; manual Refresh also updates pending uploads.
+Remaining Phase 7 work includes advanced date/format/duration filters and recently watched sorting; bulk selection, organization and media deletion; photo zoom and previous/next navigation; multiple-file upload queues, drag/drop and processing retry controls; collection covers/order and nesting where practical; and dashboard summaries/login password visibility. These are not claimed complete by the implemented history/settings/playlist checkpoint.
+
+Optional transcoding and protected HLS remain unimplemented; keep `ENABLE_TRANSCODING=false`. Ready files can play when supported by the browser, with original download available for other codecs. The library checks pending processing states every five seconds while visible and idle; manual Refresh also updates pending uploads.
 
 Before production: reconcile orphaned multipart uploads and thumbnails, handle cleanup exhaustion and abandoned worker directories operationally, configure work-volume quotas, validate the full Linux deployment and TLS, and complete backup/restore and reliability checks. Frozen completion manifests remain available for explicit retry instead of automatic expiry. HEIC and unusual codec variants are not certified; unsupported files fail processing while preserving their originals.
 
@@ -31,6 +38,8 @@ Before production: reconcile orphaned multipart uploads and thumbnails, handle c
 - [Streaming, playback and local preview](docs/STREAMING.md)
 - [Google Drive storage and account setup](docs/GOOGLE_DRIVE.md)
 - [Interactive library and organization API](docs/LIBRARY_ORGANIZATION.md)
+- [Viewing history and owner settings](docs/HISTORY_SETTINGS.md)
+- [Playlists and media metadata](docs/PLAYLISTS_METADATA.md)
 - [Multipart API contract](docs/MULTIPART_API.md)
 - [Earlier security/storage verification](docs/SECURITY_STORAGE_PROGRESS.md) — historical; current behavior is described above.
 
@@ -45,3 +54,5 @@ Local preview on this workstation: `http://localhost:3000`, backed by the develo
 Playback follow-up: fixed a development-only Strict Mode lifecycle bug that removed the video's source. Verified the source is restored, the local stream returns 206, and the development browser playback/seek/download test passes. Processing verification now runs browser coverage in both development and production by default; the runner explicitly selects the matching Node environment. The accompanying 176 unit/database and 3 live processing tests also passed.
 
 Drive live verification — 2026-10-28: the owner-approved Google connection is active in ignored `.env`, and app/worker were restarted. A synthetic H.264 video reached READY with original and thumbnail in Drive, verified checksums/revisions and reclaimed staging. Browser playback, SHA-256-matched download and an exact 128-byte retained-revision range (206) passed; anonymous thumbnail/stream/download access returned 401. The owner Storage panel now verifies live folder privacy and displays quota. OAuth remains in Google Testing state, which can expire authorization after seven days; deployment/publishing and backup reliability remain pending. Eleven focused storage-status unit tests passed, and the current broader unit/database suite also passed.
+
+Phase 7 continuity/organization checkpoint — 2026-10-28: 314 unit/database checks and three live processing checks passed on isolated PostgreSQL/MinIO. Three browser scenarios passed in both production and development, covering private playback, seeking/downloads, playlist ordering/navigation/deletion, metadata failed-save feedback/search, history/resume and failed-save recovery, persistent preferences, password rotation, session revocation, and 375px/390px/landscape layouts. Production build/typecheck, lint, formatting and whitespace checks passed. Visual review covered synthetic media and dark/light layouts. Browser testing caught and fixed a history-clear button incorrectly disabled by an empty Continue Watching view; test synchronization now waits for saved positions before closing. Disposable test app configuration explicitly disables live Drive credentials, and the real owner account/storage was preserved.

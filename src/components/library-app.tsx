@@ -8,6 +8,10 @@ import {
 } from "react";
 import { LibraryBrowser } from "./library-browser";
 import { StorageSettings } from "./storage-settings";
+import { HistoryPanel } from "./history-panel";
+import { AccountSettings } from "./account-settings";
+import { PreferencesProvider } from "./preferences-provider";
+import { PlaylistPanel } from "./playlist-panel";
 import {
   Film,
   LockKeyhole,
@@ -18,6 +22,9 @@ import {
   Check,
   Pause,
   HardDrive,
+  History,
+  Settings,
+  ListVideo,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { hashFile, hashPart } from "@/client/hash-file";
@@ -85,6 +92,8 @@ export default function LibraryApp({ name }: { name: string }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [browseRefresh, setBrowseRefresh] = useState(0);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [playlistRefresh, setPlaylistRefresh] = useState(0);
   const [uploads, setUploads] = useState<Pending[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [resume, setResume] = useState<Pending | null>(null);
@@ -470,208 +479,237 @@ export default function LibraryApp({ name }: { name: string }) {
       </main>
     );
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        {brand}
-        <nav aria-label="Library navigation" className="flex-wrap">
-          <a className="nav-active" href="#collection">
-            <Library size={19} />
-            My library
-          </a>
-          <a href="#upload">
-            <UploadCloud size={19} />
-            Upload media
-          </a>
-          <a href="#storage">
-            <HardDrive aria-hidden="true" size={19} />
-            Storage
-          </a>
-        </nav>
-        <div className="sidebar-footer">
-          <LockKeyhole size={18} />
-          <strong>Only you have access</strong>
-          <p>Your originals stay private.</p>
-        </div>
-      </aside>
-      <main className="library-main">
-        <header className="topbar">
-          <span>YOUR PERSONAL COLLECTION</span>
-          <div>
-            <span className="owner-avatar">
-              {user?.slice(0, 1).toUpperCase()}
-            </span>
-            <span>{user}</span>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              aria-label="Sign out"
-              onClick={async () => {
-                try {
-                  await api("/api/auth/logout", { method: "POST" });
-                  setUser(null);
-                  setUploads([]);
-                  setFile(null);
-                  setResume(null);
-                  setMode("login");
-                  setMessage("");
-                } catch (error) {
-                  fail(error);
-                }
-              }}
-            >
-              <LogOut size={17} />
-            </Button>
+    <PreferencesProvider onUnauthorized={expireSession}>
+      <div className="app-shell">
+        <aside className="sidebar">
+          {brand}
+          <nav aria-label="Library navigation" className="flex-wrap">
+            <a className="nav-active" href="#collection">
+              <Library size={19} />
+              My library
+            </a>
+            <a href="#upload">
+              <UploadCloud size={19} />
+              Upload media
+            </a>
+            <a href="#storage">
+              <HardDrive aria-hidden="true" size={19} />
+              Storage
+            </a>
+            <a href="#playlists">
+              <ListVideo aria-hidden="true" size={19} />
+              Playlists
+            </a>
+            <a href="#history">
+              <History aria-hidden="true" size={19} />
+              History
+            </a>
+            <a href="#settings">
+              <Settings aria-hidden="true" size={19} />
+              Settings
+            </a>
+          </nav>
+          <div className="sidebar-footer">
+            <LockKeyhole size={18} />
+            <strong>Only you have access</strong>
+            <p>Your originals stay private.</p>
           </div>
-        </header>
-        <section className="library-heading" id="collection">
-          <p className="eyebrow">COLLECT THE MOMENTS</p>
-          <h1>
-            My library<span>.</span>
-          </h1>
-          <p className="muted">A place for the things you want to keep.</p>
-        </section>
-        <LibraryBrowser
-          refreshToken={browseRefresh}
-          onUnauthorized={expireSession}
-          onRefresh={() => void refresh().catch(fail)}
-        />
-        <section className="upload-panel" id="upload">
-          <div className="upload-heading">
-            <span className="upload-icon">
-              <UploadCloud size={25} />
-            </span>
+        </aside>
+        <main className="library-main">
+          <header className="topbar">
+            <span>YOUR PERSONAL COLLECTION</span>
             <div>
-              <h2>
-                {resume ? "Resume your upload" : "Make room for another memory"}
-              </h2>
-              <p className="muted">
-                {resume
-                  ? "Select the original file for " +
-                    resume.media.originalFilename
-                  : "Add a video or photo. Your original stays private."}
-              </p>
-            </div>
-          </div>
-          <label className="file-label">
-            Choose a video or photo
-            <input
-              ref={fileInput}
-              type="file"
-              disabled={busy}
-              accept=".mp4,.webm,.mkv,.mov,.avi,.jpg,.jpeg,.png,.webp,.gif,.heic"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            />
-          </label>
-          <div className="upload-actions">
-            <span className="muted">
-              {file
-                ? file.name + " · " + size(file.size)
-                : "One file at a time. Resume whenever you need."}
-            </span>
-            <div>
-              {resume && !busy && (
-                <Button variant="ghost" onClick={() => setResume(null)}>
-                  New upload
-                </Button>
-              )}
-              {busy && controller.current ? (
-                <Button
-                  variant="secondary"
-                  onClick={() => controller.current?.abort()}
-                >
-                  <Pause size={16} />
-                  Pause
-                </Button>
-              ) : (
-                <Button
-                  disabled={busy || !file}
-                  onClick={() => void uploadFile()}
-                >
-                  <UploadCloud size={17} />
-                  {resume ? "Resume upload" : "Upload file"}
-                </Button>
-              )}
-            </div>
-          </div>
-          {stage && (
-            <div className="progress-block">
-              <span>
-                {stage} · {progress}%
+              <span className="owner-avatar">
+                {user?.slice(0, 1).toUpperCase()}
               </span>
-              <progress aria-label={stage} max={100} value={progress} />
+              <span>{user}</span>
+              <Button
+                variant="ghost"
+                disabled={busy}
+                aria-label="Sign out"
+                onClick={async () => {
+                  try {
+                    await api("/api/auth/logout", { method: "POST" });
+                    setUser(null);
+                    setUploads([]);
+                    setFile(null);
+                    setResume(null);
+                    setMode("login");
+                    setMessage("");
+                  } catch (error) {
+                    fail(error);
+                  }
+                }}
+              >
+                <LogOut size={17} />
+              </Button>
             </div>
-          )}
-        </section>
-        <p
-          className="notice"
-          role="status"
-          aria-live="polite"
-          aria-label="Upload status"
-        >
-          {message}
-        </p>
-        {uploads.length > 0 && (
-          <section className="pending-section">
-            <h2>
-              In progress <span className="count">{uploads.length}</span>
-            </h2>
-            {uploads.map((item) => (
-              <div className="pending-row" key={item.id}>
-                <UploadCloud size={20} />
-                <div>
-                  <strong>{item.media.originalFilename}</strong>
-                  <p className="muted">
-                    {size(item.bytesUploaded)} of {size(item.totalBytes)} saved
-                  </p>
-                </div>
-                <Button
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    if (item.completionStarted) void finish(item.id);
-                    else {
-                      setResume(item);
-                      setFile(null);
-                      if (fileInput.current) fileInput.current.value = "";
-                      fileInput.current?.focus();
-                    }
-                  }}
-                >
-                  {item.completionStarted ? "Finish verification" : "Resume"}
-                </Button>
-                {!item.completionStarted && (
+          </header>
+          <section className="library-heading" id="collection">
+            <p className="eyebrow">COLLECT THE MOMENTS</p>
+            <h1>
+              My library<span>.</span>
+            </h1>
+            <p className="muted">A place for the things you want to keep.</p>
+          </section>
+          <LibraryBrowser
+            refreshToken={browseRefresh}
+            onUnauthorized={expireSession}
+            onRefresh={() => void refresh().catch(fail)}
+            onPlaybackChange={() => setHistoryRefresh((value) => value + 1)}
+            onPlaylistChange={() => setPlaylistRefresh((value) => value + 1)}
+          />
+          <HistoryPanel
+            refreshToken={historyRefresh}
+            onUnauthorized={expireSession}
+          />
+          <PlaylistPanel
+            refreshToken={playlistRefresh}
+            onUnauthorized={expireSession}
+            onPlaybackChange={() => setHistoryRefresh((value) => value + 1)}
+          />
+          <section className="upload-panel" id="upload">
+            <div className="upload-heading">
+              <span className="upload-icon">
+                <UploadCloud size={25} />
+              </span>
+              <div>
+                <h2>
+                  {resume
+                    ? "Resume your upload"
+                    : "Make room for another memory"}
+                </h2>
+                <p className="muted">
+                  {resume
+                    ? "Select the original file for " +
+                      resume.media.originalFilename
+                    : "Add a video or photo. Your original stays private."}
+                </p>
+              </div>
+            </div>
+            <label className="file-label">
+              Choose a video or photo
+              <input
+                ref={fileInput}
+                type="file"
+                disabled={busy}
+                accept=".mp4,.webm,.mkv,.mov,.avi,.jpg,.jpeg,.png,.webp,.gif,.heic"
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <div className="upload-actions">
+              <span className="muted">
+                {file
+                  ? file.name + " · " + size(file.size)
+                  : "One file at a time. Resume whenever you need."}
+              </span>
+              <div>
+                {resume && !busy && (
+                  <Button variant="ghost" onClick={() => setResume(null)}>
+                    New upload
+                  </Button>
+                )}
+                {busy && controller.current ? (
                   <Button
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => setCancelId(item.id)}
+                    variant="secondary"
+                    onClick={() => controller.current?.abort()}
                   >
-                    Cancel
+                    <Pause size={16} />
+                    Pause
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={busy || !file}
+                    onClick={() => void uploadFile()}
+                  >
+                    <UploadCloud size={17} />
+                    {resume ? "Resume upload" : "Upload file"}
                   </Button>
                 )}
               </div>
-            ))}
+            </div>
+            {stage && (
+              <div className="progress-block">
+                <span>
+                  {stage} · {progress}%
+                </span>
+                <progress aria-label={stage} max={100} value={progress} />
+              </div>
+            )}
           </section>
-        )}
-        <StorageSettings />
-        <footer className="library-footer">
-          <Check size={14} /> Your library. No public links. No shared access.
-        </footer>
-      </main>
-      <dialog ref={confirmation} onCancel={() => setCancelId(null)}>
-        <h2>Cancel this upload?</h2>
-        <p>
-          Saved parts will be removed. Your original file on this device will
-          stay untouched.
-        </p>
-        <div className="dialog-actions">
-          <Button variant="secondary" onClick={() => setCancelId(null)}>
-            Keep upload
-          </Button>
-          <Button variant="danger" onClick={() => void cancelUpload()}>
-            Cancel upload
-          </Button>
-        </div>
-      </dialog>
-    </div>
+          <p
+            className="notice"
+            role="status"
+            aria-live="polite"
+            aria-label="Upload status"
+          >
+            {message}
+          </p>
+          {uploads.length > 0 && (
+            <section className="pending-section">
+              <h2>
+                In progress <span className="count">{uploads.length}</span>
+              </h2>
+              {uploads.map((item) => (
+                <div className="pending-row" key={item.id}>
+                  <UploadCloud size={20} />
+                  <div>
+                    <strong>{item.media.originalFilename}</strong>
+                    <p className="muted">
+                      {size(item.bytesUploaded)} of {size(item.totalBytes)}{" "}
+                      saved
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      if (item.completionStarted) void finish(item.id);
+                      else {
+                        setResume(item);
+                        setFile(null);
+                        if (fileInput.current) fileInput.current.value = "";
+                        fileInput.current?.focus();
+                      }
+                    }}
+                  >
+                    {item.completionStarted ? "Finish verification" : "Resume"}
+                  </Button>
+                  {!item.completionStarted && (
+                    <Button
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => setCancelId(item.id)}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </section>
+          )}
+          <StorageSettings />
+          <AccountSettings onUnauthorized={expireSession} />
+          <footer className="library-footer">
+            <Check size={14} /> Your library. No public links. No shared access.
+          </footer>
+        </main>
+        <dialog ref={confirmation} onCancel={() => setCancelId(null)}>
+          <h2>Cancel this upload?</h2>
+          <p>
+            Saved parts will be removed. Your original file on this device will
+            stay untouched.
+          </p>
+          <div className="dialog-actions">
+            <Button variant="secondary" onClick={() => setCancelId(null)}>
+              Keep upload
+            </Button>
+            <Button variant="danger" onClick={() => void cancelUpload()}>
+              Cancel upload
+            </Button>
+          </div>
+        </dialog>
+      </div>
+    </PreferencesProvider>
   );
 }

@@ -11,7 +11,7 @@ const querySchema = paginationSchema
     type: z.enum(["all", "VIDEO", "IMAGE"]).default("all"),
     favorite: z.enum(["true", "false"]).default("false"),
     collection: z.string().uuid().optional(),
-    sort: z.enum(["newest", "oldest", "title"]).default("newest"),
+    sort: z.enum(["newest", "oldest", "title", "duration"]).default("newest"),
   })
   .strict();
 export const runtime = "nodejs";
@@ -56,6 +56,17 @@ export async function GET(request: NextRequest) {
             OR: [
               { title: { contains: search, mode: "insensitive" } },
               { originalFilename: { contains: search, mode: "insensitive" } },
+              { description: { contains: search, mode: "insensitive" } },
+              {
+                mediaTags: {
+                  some: {
+                    tag: {
+                      ownerId: user.id,
+                      name: { contains: search, mode: "insensitive" },
+                    },
+                  },
+                },
+              },
             ],
           }
         : {}),
@@ -63,10 +74,12 @@ export async function GET(request: NextRequest) {
     const orderBy: Prisma.MediaOrderByWithRelationInput[] =
       sort === "title"
         ? [{ title: "asc" }, { id: "asc" }]
-        : [
-            { createdAt: sort === "oldest" ? "asc" : "desc" },
-            { id: sort === "oldest" ? "asc" : "desc" },
-          ];
+        : sort === "duration"
+          ? [{ duration: { sort: "desc", nulls: "last" } }, { id: "asc" }]
+          : [
+              { createdAt: sort === "oldest" ? "asc" : "desc" },
+              { id: sort === "oldest" ? "asc" : "desc" },
+            ];
     const [rows, total] = await prisma.$transaction(
       [
         prisma.media.findMany({

@@ -18,10 +18,13 @@ import {
   Trash2,
   RefreshCw,
   ArrowUpRight,
+  ListVideo,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { MediaViewer } from "./media-viewer";
 import { CollectionDialog } from "./collection-dialog";
+import { MediaDetailsDialog } from "./media-details-dialog";
+import { PlaylistMembershipDialog } from "./playlist-panel";
 
 const mediaSchema = z.object({
   id: z.string().uuid(),
@@ -103,10 +106,14 @@ export function LibraryBrowser({
   refreshToken,
   onUnauthorized,
   onRefresh,
+  onPlaybackChange,
+  onPlaylistChange,
 }: {
   refreshToken: number;
   onUnauthorized: () => void;
   onRefresh: () => void;
+  onPlaybackChange?: () => void;
+  onPlaylistChange?: () => void;
 }) {
   const [filters, setFilters] = useState(initialFilters);
   const [search, setSearch] = useState("");
@@ -121,6 +128,8 @@ export function LibraryBrowser({
   const [revision, setRevision] = useState(0);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [viewing, setViewing] = useState<Media | null>(null);
+  const [editing, setEditing] = useState<Media | null>(null);
+  const [playlistMedia, setPlaylistMedia] = useState<Media | null>(null);
   const [dialog, setDialog] = useState<{
     mode: "create" | "edit" | "add" | "delete";
     media?: Media;
@@ -232,6 +241,8 @@ export function LibraryBrowser({
       loading ||
       dialog ||
       viewing ||
+      editing ||
+      playlistMedia ||
       error ||
       !items.some((item) =>
         ["UPLOADED", "PROCESSING"].includes(item.processingStatus),
@@ -245,7 +256,7 @@ export function LibraryBrowser({
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [items, loading, error, dialog, viewing]);
+  }, [items, loading, error, dialog, viewing, editing, playlistMedia]);
 
   async function updateItem(item: Media, action: "favorite" | "remove") {
     const controller = new AbortController();
@@ -371,6 +382,7 @@ export function LibraryBrowser({
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="title">Title A–Z</option>
+            <option value="duration">Longest first</option>
           </select>
         </label>
         <div className="view-switch" role="group" aria-label="Display layout">
@@ -555,6 +567,23 @@ export function LibraryBrowser({
                         : item.processingStatus.toLowerCase()}
                     </p>
                     <div className="media-card-actions">
+                      {item.type === "VIDEO" &&
+                        item.processingStatus === "READY" && (
+                          <button
+                            className="icon-control"
+                            aria-label={`Add to playlist: ${item.title}`}
+                            onClick={() => setPlaylistMedia(item)}
+                          >
+                            <ListVideo size={19} aria-hidden="true" />
+                          </button>
+                        )}
+                      <button
+                        className="icon-control"
+                        aria-label={`Edit details: ${item.title}`}
+                        onClick={() => setEditing(item)}
+                      >
+                        <Pencil size={17} aria-hidden="true" />
+                      </button>
                       {item.processingStatus === "READY" && (
                         <Button
                           variant="secondary"
@@ -660,7 +689,36 @@ export function LibraryBrowser({
         <MediaViewer
           key={viewing.id}
           media={viewing}
-          onClose={() => setViewing(null)}
+          onUnauthorized={onUnauthorized}
+          onClose={() => {
+            setViewing(null);
+            onPlaybackChange?.();
+          }}
+        />
+      )}
+      {editing && (
+        <MediaDetailsDialog
+          key={editing.id}
+          mediaId={editing.id}
+          onUnauthorized={onUnauthorized}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setNotice("Media details saved.");
+            setRevision((value) => value + 1);
+          }}
+        />
+      )}
+      {playlistMedia && (
+        <PlaylistMembershipDialog
+          media={playlistMedia}
+          onUnauthorized={onUnauthorized}
+          onClose={() => setPlaylistMedia(null)}
+          onSaved={() => {
+            setPlaylistMedia(null);
+            setNotice("Video added to playlist.");
+            onPlaylistChange?.();
+          }}
         />
       )}
     </section>
