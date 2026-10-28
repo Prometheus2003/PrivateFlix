@@ -109,6 +109,7 @@ try {
     S3_BUCKET: "privateflix-processing-test",
     REDIS_URL: `redis://${redis}:6379`,
     SESSION_SECRET: randomBytes(64).toString("hex"),
+    SETUP_TOKEN: randomBytes(32).toString("hex"),
     APP_URL: "https://privateflix.test",
     FFMPEG_TIMEOUT: "30",
   };
@@ -140,133 +141,169 @@ try {
     ["node_modules/prisma/build/index.js", "migrate", "deploy"],
     env,
   );
-  if (!["browser", "worker"].includes(process.env.PRIVATEFLIX_TEST_FOCUS)) {
+  if (
+    !["browser", "worker", "upload"].includes(
+      process.env.PRIVATEFLIX_TEST_FOCUS,
+    )
+  ) {
     await run(process.execPath, ["node_modules/vitest/vitest.mjs", "run"], env);
   } else {
     console.info("Focused verification; unit/database suite is not rerun.");
   }
-  // Generate actual decoder fixtures with an isolated, credential-free FFmpeg process.
-  for (const type of ["png", "mp4"]) {
-    const args =
-      type === "png"
-        ? ["-frames:v", "1", "-c:v", "png", "-f", "image2pipe"]
-        : [
-            "-t",
-            "12",
-            "-c:v",
-            "libx264",
-            "-movflags",
-            "frag_keyframe+empty_moov",
-            "-f",
-            "mp4",
-          ];
-    const fixture = await run(
-      docker,
+  if (process.env.PRIVATEFLIX_TEST_FOCUS === "upload") {
+    await run(
+      process.execPath,
+      ["scripts/test-e2e.mjs", "tests/e2e/upload-ui.spec.ts"],
+      {
+        ...env,
+        PRIVATEFLIX_E2E_MODE: "development",
+        PRIVATEFLIX_STORAGE_TEST: "1",
+      },
+    );
+  } else {
+    // Generate actual decoder fixtures with an isolated, credential-free FFmpeg process.
+    for (const type of ["png", "mp4"]) {
+      const args =
+        type === "png"
+          ? ["-frames:v", "1", "-c:v", "png", "-f", "image2pipe"]
+          : [
+              "-t",
+              "12",
+              "-c:v",
+              "libx264",
+              "-movflags",
+              "frag_keyframe+empty_moov",
+              "-f",
+              "mp4",
+            ];
+      const fixture = await run(
+        docker,
+        [
+          "run",
+          "--rm",
+          "--network",
+          "none",
+          "--entrypoint",
+          "ffmpeg",
+          "privateflix-worker:local",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=c=purple:s=320x240:r=10",
+          "-threads",
+          "1",
+          ...args,
+          "pipe:1",
+        ],
+        process.env,
+        true,
+      );
+      writeFileSync(join(directory, "fixture." + type), fixture);
+    }
+    const workerEnv = {
+      NODE_ENV: "production",
+      DATABASE_URL: `postgresql://privateflix:${password}@${pg}:5432/privateflix_security_test`,
+      S3_ENDPOINT: `http://${minio}:9000`,
+      S3_ACCESS_KEY: access,
+      S3_SECRET_KEY: password,
+      S3_BUCKET: env.S3_BUCKET,
+      REDIS_URL: env.REDIS_URL,
+      SESSION_SECRET: env.SESSION_SECRET,
+      APP_URL: env.APP_URL,
+      FFMPEG_TIMEOUT: "30",
+    };
+    // Verify the current worker source, rather than a stale locally tagged image.
+    await run(docker, [
+      "build",
+      "--file",
+      "deploy/Dockerfile.worker",
+      "--tag",
+      "privateflix-worker:local",
+      ".",
+    ]);
+    const workerName = await container("worker", [
+      "--read-only",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges:true",
+      "--memory",
+      "1g",
+      "--cpus",
+      "2",
+      "--pids-limit",
+      "128",
+      "--tmpfs",
+      "/work:uid=1000,gid=1000,mode=700,size=64m",
+      "--tmpfs",
+      "/tmp:size=64m",
+      "--env-file",
+      envFile("worker", workerEnv),
+      "privateflix-worker:local",
+    ]);
+    await run(
+      process.execPath,
       [
+        "node_modules/vitest/vitest.mjs",
         "run",
-        "--rm",
-        "--network",
-        "none",
-        "--entrypoint",
-        "ffmpeg",
-        "privateflix-worker:local",
-        "-v",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        "color=c=purple:s=320x240:r=10",
-        "-threads",
-        "1",
-        ...args,
-        "pipe:1",
+        "tests/integration/processing-live.test.ts",
       ],
-      process.env,
-      true,
+      {
+        ...env,
+        PRIVATEFLIX_PROCESSING_TEST: "1",
+        PRIVATEFLIX_FIXTURES: directory,
+      },
     );
-    writeFileSync(join(directory, "fixture." + type), fixture);
-  }
-  const workerEnv = {
-    NODE_ENV: "production",
-    DATABASE_URL: `postgresql://privateflix:${password}@${pg}:5432/privateflix_security_test`,
-    S3_ENDPOINT: `http://${minio}:9000`,
-    S3_ACCESS_KEY: access,
-    S3_SECRET_KEY: password,
-    S3_BUCKET: env.S3_BUCKET,
-    REDIS_URL: env.REDIS_URL,
-    SESSION_SECRET: env.SESSION_SECRET,
-    APP_URL: env.APP_URL,
-    FFMPEG_TIMEOUT: "30",
-  };
-  // Verify the current worker source, rather than a stale locally tagged image.
-  await run(docker, [
-    "build",
-    "--file",
-    "deploy/Dockerfile.worker",
-    "--tag",
-    "privateflix-worker:local",
-    ".",
-  ]);
-  await container("worker", [
-    "--read-only",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges:true",
-    "--memory",
-    "1g",
-    "--cpus",
-    "2",
-    "--pids-limit",
-    "128",
-    "--tmpfs",
-    "/work:uid=1000,gid=1000,mode=700,size=64m",
-    "--tmpfs",
-    "/tmp:size=64m",
-    "--env-file",
-    envFile("worker", workerEnv),
-    "privateflix-worker:local",
-  ]);
-  await run(
-    process.execPath,
-    [
-      "node_modules/vitest/vitest.mjs",
-      "run",
-      "tests/integration/processing-live.test.ts",
-    ],
-    {
-      ...env,
-      PRIVATEFLIX_PROCESSING_TEST: "1",
-      PRIVATEFLIX_FIXTURES: directory,
-    },
-  );
-  const modes =
-    process.env.PRIVATEFLIX_TEST_FOCUS === "worker"
-      ? []
-      : process.env.PRIVATEFLIX_E2E_MODE
-        ? [process.env.PRIVATEFLIX_E2E_MODE]
-        : ["production", "development"];
-  // Browser verification must exercise this source tree, never a stale build.
-  if (modes.includes("production")) {
-    await run(
-      process.execPath,
-      ["node_modules/next/dist/bin/next", "build", "--webpack"],
-      { ...env, NODE_ENV: "production" },
-    );
-  }
-  for (const mode of modes) {
-    console.info("Playback browser verification: " + mode);
-    await run(
-      process.execPath,
-      [
-        "scripts/test-e2e.mjs",
-        "tests/e2e/processing.spec.ts",
-        "tests/e2e/playlists.spec.ts",
-        "tests/e2e/photos.spec.ts",
-        "tests/e2e/bulk.spec.ts",
-      ],
-      { ...env, PRIVATEFLIX_E2E_MODE: mode, PRIVATEFLIX_PROCESSING_TEST: "1" },
-    );
+    const modes =
+      process.env.PRIVATEFLIX_TEST_FOCUS === "worker"
+        ? []
+        : process.env.PRIVATEFLIX_E2E_MODE
+          ? [process.env.PRIVATEFLIX_E2E_MODE]
+          : ["production", "development"];
+    // Browser verification must exercise this source tree, never a stale build.
+    if (modes.includes("production")) {
+      await run(
+        process.execPath,
+        ["node_modules/next/dist/bin/next", "build", "--webpack"],
+        { ...env, NODE_ENV: "production" },
+      );
+    }
+    for (const mode of modes) {
+      console.info("Playback browser verification: " + mode);
+      await run(
+        process.execPath,
+        [
+          "scripts/test-e2e.mjs",
+          "tests/e2e/processing.spec.ts",
+          "tests/e2e/playlists.spec.ts",
+          "tests/e2e/photos.spec.ts",
+          "tests/e2e/bulk.spec.ts",
+          "tests/e2e/queue.spec.ts",
+        ],
+        {
+          ...env,
+          PRIVATEFLIX_E2E_MODE: mode,
+          PRIVATEFLIX_PROCESSING_TEST: "1",
+        },
+      );
+    }
+    if (modes.includes("development")) {
+      // This regression deliberately resets the guarded test DB. Run it last,
+      // after fixture-based scenarios, with the worker stopped.
+      await run(docker, ["stop", "-t", "10", workerName]);
+      containers.splice(containers.indexOf(workerName), 1);
+      await run(
+        process.execPath,
+        ["scripts/test-e2e.mjs", "tests/e2e/upload-ui.spec.ts"],
+        {
+          ...env,
+          PRIVATEFLIX_E2E_MODE: "development",
+          PRIVATEFLIX_STORAGE_TEST: "1",
+        },
+      );
+    }
   }
 } catch (error) {
   console.error(

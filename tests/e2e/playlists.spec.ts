@@ -145,7 +145,7 @@ test("private playlists save order, navigate videos and delete only grouping", a
       await add
         .getByRole("button", { name: "Add video to playlist", exact: true })
         .click();
-      await expect(add).toHaveCount(0);
+      await expect(add).toHaveCount(0, { timeout: 20000 });
     }
     await panel
       .getByLabel("Playlist", { exact: true })

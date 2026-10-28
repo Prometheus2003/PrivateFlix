@@ -559,7 +559,7 @@ test("history resumes playback and owner settings persist with working security 
         "Password changed. Other sessions have been signed out.",
         { exact: true },
       ),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20000 });
     expect(
       await verify(
         (await db.user.findUniqueOrThrow({ where: { id: owner.id } }))

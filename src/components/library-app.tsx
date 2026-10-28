@@ -25,9 +25,14 @@ import {
   History,
   Settings,
   ListVideo,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { hashFile, hashPart } from "@/client/hash-file";
+import { uploadResumable } from "@/client/resumable-upload";
+import { OwnerApiError } from "@/client/api";
+import { UploadQueue } from "./upload-queue";
+import { UploadHistory } from "./upload-history";
 interface Pending {
   id: string;
   totalBytes: number;
@@ -35,10 +40,6 @@ interface Pending {
   expectedChecksum: string;
   completionStarted: boolean;
   media: { originalFilename: string; mimeType: string };
-}
-interface Receipt {
-  partNumber: number;
-  checksum: string;
 }
 class ApiError extends Error {
   constructor(
@@ -71,19 +72,6 @@ const size = (bytes: number) =>
   bytes >= 1024 ** 3
     ? (bytes / 1024 ** 3).toFixed(1) + " GB"
     : (bytes / 1024 ** 2).toFixed(1) + " MB";
-const mimeTypes: Record<string, string> = {
-  mp4: "video/mp4",
-  webm: "video/webm",
-  mkv: "video/x-matroska",
-  mov: "video/quicktime",
-  avi: "video/x-msvideo",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  gif: "image/gif",
-  heic: "image/heic",
-};
 export default function LibraryApp({ name }: { name: string }) {
   const [user, setUser] = useState<string | null>(null);
   const [mode, setMode] = useState<"loading" | "login" | "setup" | "library">(
@@ -91,6 +79,9 @@ export default function LibraryApp({ name }: { name: string }) {
   );
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const [uploadMode, setUploadMode] = useState<"single" | "batch">("single");
+  const [showPassword, setShowPassword] = useState(false);
   const [browseRefresh, setBrowseRefresh] = useState(0);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [playlistRefresh, setPlaylistRefresh] = useState(0);
@@ -104,7 +95,10 @@ export default function LibraryApp({ name }: { name: string }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const confirmation = useRef<HTMLDialogElement>(null);
   function fail(error: unknown) {
-    if (error instanceof ApiError && error.status === 401) {
+    if (
+      (error instanceof ApiError || error instanceof OwnerApiError) &&
+      error.status === 401
+    ) {
       setUser(null);
       setUploads([]);
       setResume(null);
@@ -205,6 +199,7 @@ export default function LibraryApp({ name }: { name: string }) {
         "/api/auth/session",
       );
       form.reset();
+      setShowPassword(false);
       await refresh();
       setUser(session.user.username);
       setMode("library");
@@ -226,75 +221,14 @@ export default function LibraryApp({ name }: { name: string }) {
     setProgress(0);
     setStage("Checking your file");
     try {
-      const checksum = await hashFile(file, abort.signal, setProgress);
-      if (
-        resume &&
-        (resume.totalBytes !== file.size ||
-          resume.expectedChecksum !== checksum)
-      )
-        throw new Error(
-          "This file does not match the paused upload. Select the original file.",
-        );
-      const mime = mimeTypes[file.name.split(".").pop()?.toLowerCase() ?? ""];
-      if (!mime) throw new Error("This file format is not supported.");
-      const started = resume
-        ? { uploadId: resume.id, partSize: 8 * 1024 * 1024 }
-        : await api<{ uploadId: string; partSize: number }>(
-            "/api/media/upload/start",
-            {
-              ...json({
-                filename: file.name,
-                mime,
-                totalBytes: file.size,
-                checksum,
-              }),
-              signal: abort.signal,
-            },
-          );
-      const base = "/api/media/upload/" + started.uploadId;
-      const receipts = new Map<number, string>();
-      for (let p = 1; ; p++) {
-        const saved = await api<{
-          upload: { parts: Receipt[] };
-          hasMore: boolean;
-        }>(base + "?page=" + p, { signal: abort.signal });
-        saved.upload.parts.forEach((r) =>
-          receipts.set(r.partNumber, r.checksum),
-        );
-        if (!saved.hasMore) break;
-      }
-      setStage("Uploading securely");
-      setProgress(0);
-      for (
-        let offset = 0, part = 1;
-        offset < file.size;
-        offset += started.partSize, part++
-      ) {
-        abort.signal.throwIfAborted();
-        const bytes = new Uint8Array(
-          await file.slice(offset, offset + started.partSize).arrayBuffer(),
-        );
-        const digest = hashPart(bytes);
-        if (receipts.has(part) && receipts.get(part) !== digest)
-          throw new Error("The saved upload does not match this file.");
-        if (!receipts.has(part))
-          await api(base + "/parts/" + part, {
-            method: "PUT",
-            body: bytes,
-            headers: {
-              "Content-Type": "application/octet-stream",
-              "X-Part-Sha256": digest,
-            },
-            signal: abort.signal,
-          });
-        setProgress(
-          Math.round(
-            (Math.min(file.size, offset + bytes.length) / file.size) * 100,
-          ),
-        );
-      }
-      setStage("Verifying upload");
-      await api(base + "/complete", { method: "POST", signal: abort.signal });
+      await uploadResumable(file, {
+        signal: abort.signal,
+        resume,
+        onProgress: (nextStage, percent) => {
+          setStage(nextStage);
+          setProgress(percent);
+        },
+      });
       setMessage("Upload saved privately. It is awaiting media processing.");
       setFile(null);
       setResume(null);
@@ -437,7 +371,7 @@ export default function LibraryApp({ name }: { name: string }) {
                 Password
                 <input
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   minLength={mode === "setup" ? 12 : 1}
                   autoComplete={
@@ -445,13 +379,26 @@ export default function LibraryApp({ name }: { name: string }) {
                   }
                 />
               </label>
+              <Button
+                type="button"
+                variant="ghost"
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((value) => !value)}
+              >
+                {showPassword ? (
+                  <EyeOff size={16} aria-hidden="true" />
+                ) : (
+                  <Eye size={16} aria-hidden="true" />
+                )}
+                {showPassword ? "Hide password" : "Show password"}
+              </Button>
               {mode === "setup" && (
                 <>
                   <label>
                     Confirm password
                     <input
                       name="confirmPassword"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       autoComplete="new-password"
                     />
@@ -587,55 +534,80 @@ export default function LibraryApp({ name }: { name: string }) {
                 </p>
               </div>
             </div>
-            <label className="file-label">
-              Choose a video or photo
-              <input
-                ref={fileInput}
-                type="file"
-                disabled={busy}
-                accept=".mp4,.webm,.mkv,.mov,.avi,.jpg,.jpeg,.png,.webp,.gif,.heic"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-            <div className="upload-actions">
-              <span className="muted">
-                {file
-                  ? file.name + " · " + size(file.size)
-                  : "One file at a time. Resume whenever you need."}
-              </span>
-              <div>
-                {resume && !busy && (
-                  <Button variant="ghost" onClick={() => setResume(null)}>
-                    New upload
-                  </Button>
-                )}
-                {busy && controller.current ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => controller.current?.abort()}
-                  >
-                    <Pause size={16} />
-                    Pause
-                  </Button>
-                ) : (
-                  <Button
-                    disabled={busy || !file}
-                    onClick={() => void uploadFile()}
-                  >
-                    <UploadCloud size={17} />
-                    {resume ? "Resume upload" : "Upload file"}
-                  </Button>
-                )}
-              </div>
+            <div className="library-tabs" role="group" aria-label="Upload mode">
+              <button
+                aria-pressed={uploadMode === "single"}
+                disabled={busy || queueBusy}
+                onClick={() => setUploadMode("single")}
+              >
+                Single file / resume
+              </button>
+              <button
+                aria-pressed={uploadMode === "batch"}
+                disabled={busy || queueBusy}
+                onClick={() => setUploadMode("batch")}
+              >
+                Batch upload
+              </button>
             </div>
-            {stage && (
-              <div className="progress-block">
-                <span>
-                  {stage} · {progress}%
+            <div hidden={uploadMode !== "single"}>
+              <label className="file-label">
+                Choose a video or photo
+                <input
+                  ref={fileInput}
+                  type="file"
+                  disabled={busy}
+                  accept=".mp4,.webm,.mkv,.mov,.avi,.jpg,.jpeg,.png,.webp,.gif,.heic"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <div className="upload-actions">
+                <span className="muted">
+                  {file
+                    ? file.name + " · " + size(file.size)
+                    : "One file at a time. Resume whenever you need."}
                 </span>
-                <progress aria-label={stage} max={100} value={progress} />
+                <div>
+                  {resume && !busy && (
+                    <Button variant="ghost" onClick={() => setResume(null)}>
+                      New upload
+                    </Button>
+                  )}
+                  {busy && Boolean(stage) ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => controller.current?.abort()}
+                    >
+                      <Pause size={16} />
+                      Pause
+                    </Button>
+                  ) : (
+                    <Button
+                      disabled={busy || !file}
+                      onClick={() => void uploadFile()}
+                    >
+                      <UploadCloud size={17} />
+                      {resume ? "Resume upload" : "Upload file"}
+                    </Button>
+                  )}
+                </div>
               </div>
-            )}
+              {stage && (
+                <div className="progress-block">
+                  <span>
+                    {stage} · {progress}%
+                  </span>
+                  <progress aria-label={stage} max={100} value={progress} />
+                </div>
+              )}
+            </div>
+            <div hidden={uploadMode !== "batch"}>
+              <UploadQueue
+                onUnauthorized={expireSession}
+                onBusy={setQueueBusy}
+                onUploaded={() => void refresh().catch(fail)}
+              />
+            </div>
           </section>
           <p
             className="notice"
@@ -666,6 +638,7 @@ export default function LibraryApp({ name }: { name: string }) {
                     onClick={() => {
                       if (item.completionStarted) void finish(item.id);
                       else {
+                        setUploadMode("single");
                         setResume(item);
                         setFile(null);
                         if (fileInput.current) fileInput.current.value = "";
@@ -688,6 +661,10 @@ export default function LibraryApp({ name }: { name: string }) {
               ))}
             </section>
           )}
+          <UploadHistory
+            refreshToken={browseRefresh}
+            onUnauthorized={expireSession}
+          />
           <StorageSettings />
           <AccountSettings onUnauthorized={expireSession} />
           <footer className="library-footer">

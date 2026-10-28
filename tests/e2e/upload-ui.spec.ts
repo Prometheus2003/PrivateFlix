@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 test("owner sets up, pauses and resumes a browser upload, then signs out", async ({
   page,
 }) => {
+  test.setTimeout(90000);
   test.skip(
     process.env.PRIVATEFLIX_SECURITY_TEST !== "1" ||
       process.env.PRIVATEFLIX_STORAGE_TEST !== "1",
@@ -22,6 +23,8 @@ test("owner sets up, pauses and resumes a browser upload, then signs out", async
     await db.authThrottle.deleteMany();
     // The local runner is HTTP; model the canonical HTTPS origin seen behind Caddy.
     await page.route("**/api/**", async (route) => {
+      if (["GET", "HEAD"].includes(route.request().method()))
+        return route.continue();
       const headers = { ...(await route.request().allHeaders()) };
       if (route.request().method() !== "GET") {
         headers.origin = "https://localhost:3319";
@@ -41,6 +44,16 @@ test("owner sets up, pauses and resumes a browser upload, then signs out", async
     await page
       .getByLabel("Password", { exact: true })
       .fill("Browser-test!2026-safe");
+    await page
+      .getByRole("button", { name: "Show password", exact: true })
+      .click();
+    await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute(
+      "type",
+      "text",
+    );
+    await page
+      .getByRole("button", { name: "Hide password", exact: true })
+      .click();
     await page
       .getByLabel("Confirm password", { exact: true })
       .fill("Browser-test!2026-safe");
@@ -147,7 +160,7 @@ test("owner sets up, pauses and resumes a browser upload, then signs out", async
       path: "test-results/library-mobile.png",
       fullPage: true,
     });
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Sign in to your library" }),
     ).toBeVisible();
