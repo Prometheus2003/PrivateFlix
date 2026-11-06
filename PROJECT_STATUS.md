@@ -1,7 +1,7 @@
 # PrivateFlix — Project Status
 
-Updated: 2026-10-28.
-Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and the installed 21st MCP. Google Drive is connected and verified on this workstation. History/resume, account/session settings, metadata editing, playlists, advanced filters, photo navigation/zoom, bulk organization, permanent deletion and processing retry are implemented and verified. Additional Phase 7 work is listed below. Optional HLS/transcoding remains disabled; production deployment is not yet complete.
+Updated: 2026-11-07.
+Current work: Phase 7 frontend is complete. Phase 8 covers backup and restore, cleanup, monitoring, and storage limits. Google Drive uploads and playback have been verified on this workstation. Check the Storage panel for current authorization. Optional HLS/transcoding remains disabled.
 
 ## Implemented
 
@@ -27,10 +27,9 @@ Current work: Phase 7 frontend work continues using UI UX Pro Max guidance and t
 - Page-scoped multiple selection, bulk favorites, tag add/replace/remove and collection add/move/unfile. Transactions reject unavailable selections without partial updates. Confirmed permanent deletion hides media immediately and queues original/derivative cleanup with durable retries; grouping-only deletion remains separate.
 - Owner processing retry for verified originals after terminal metadata failures, with state/ownership rechecks, bounded new jobs, cooldown and daily caps. Settings expose pending deletion and failed cleanup counts. Terminal worker failures now update upload receipts, and deletion handles older terminal receipts safely.
 - Batch upload mode with drag/drop, a fifty-file queue, sequential resumable uploads, per-file and aggregate progress, pause/retry, format/size validation and explicit duplicate choices. Single-file and reload/resume paths share the same bounded upload helper. Owner-only upload history reports safe processing outcomes; setup/sign-in have a password visibility toggle.
+- Private collection covers, saved order and nesting up to five levels. The library overview shows counts, original-media size and a short list of recent activity. Collection moves and ordering save together, and deleting a parent preserves its children and media.
 
 ## Remaining
-
-Remaining Phase 7 work includes collection covers/order and nesting where practical, plus dashboard summaries/recent activity. These are not claimed complete by the implemented library/upload checkpoint.
 
 Optional transcoding and protected HLS remain unimplemented; keep `ENABLE_TRANSCODING=false`. Ready files can play when supported by the browser, with original download available for other codecs. The library checks pending processing states every five seconds while visible and idle; manual Refresh also updates pending uploads.
 
@@ -43,6 +42,7 @@ Before production: reconcile orphaned multipart uploads and thumbnails, handle c
 - [Streaming, playback and local preview](docs/STREAMING.md)
 - [Google Drive storage and account setup](docs/GOOGLE_DRIVE.md)
 - [Interactive library and organization API](docs/LIBRARY_ORGANIZATION.md)
+- [Collection presentation and library overview](docs/COLLECTIONS_DASHBOARD.md)
 - [Filters, photo viewing, bulk changes and deletion/retry](docs/LIBRARY_WORKFLOWS.md)
 - [Viewing history and owner settings](docs/HISTORY_SETTINGS.md)
 - [Playlists and media metadata](docs/PLAYLISTS_METADATA.md)
@@ -66,3 +66,5 @@ Phase 7 continuity/organization checkpoint — 2026-10-28: 314 unit/database che
 Phase 7 filtering/viewer/bulk checkpoint — 2026-10-28: 353 unit/database checks passed on isolated PostgreSQL 16. Five browser scenarios passed in both production and development, covering advanced filters, photo zoom/keyboard/fullscreen, bulk favorites/tags/collections, nested viewer dialogs, confirmed deletion and real-worker processing retry alongside earlier playback/history/settings/playlist flows. Four live checks passed with a freshly built worker, including terminal failure receipts and physical deletion of synthetic originals/thumbnails/previews from MinIO. Production build/typecheck, lint, formatting and whitespace checks passed; mobile photo/deletion and landscape screenshots were visually reviewed. Test fixtures were corrected for the database's enforced single-owner constraint and the search input's accessible role. The verification runner now rebuilds the worker before live checks and supports an explicit worker-only focus. No live owner media was deleted and credentials remain outside Git.
 
 Phase 7 upload queue checkpoint — 2026-10-28: 362 unit/database checks and four live processing/deletion checks passed against disposable services. Six browser scenarios passed in production and development, including a paused eleven-MiB batch upload, saved-part resume, sequential scheduling, duplicate choice, invalid-format feedback, drag/drop and upload history. The original single-file setup/reload/resume/cancellation/sign-out/sign-in regression also passed in development, including password visibility. Production build, typecheck, lint, formatting and whitespace checks passed; the synthetic mobile queue layout was visually reviewed. Cold development endpoint checks now wait within their UI request deadlines; legacy sign-out matching and interception of background read requests were corrected. The runner has focused browser/worker/upload modes and stops the disposable worker before the legacy test resets its guarded test database. Existing owner storage and files are preserved.
+
+Phase 7 closeout — 2026-11-07: 375 unit/database checks and four live worker checks passed on disposable services. Seven browser scenarios passed in production and development, with the legacy upload and resume scenario passing in a separate development run. The initial combined run encountered development timeouts on this workstation; the focused development runs verified those paths. Production build, type checking, lint, formatting and whitespace checks passed. The collection and dashboard changes require no database migration.

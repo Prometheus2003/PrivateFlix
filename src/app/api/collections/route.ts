@@ -3,6 +3,10 @@ import { requireAuth } from "@/lib/auth/require-auth";
 import { assertSameOrigin, authError, authFailure } from "@/lib/auth/http";
 import { prisma } from "@/lib/db/prisma";
 import {
+  collectionSelect,
+  collectionSummary,
+} from "@/lib/media/collection-layout";
+import {
   collectionSchema,
   libraryBody,
   libraryJson,
@@ -20,24 +24,15 @@ export async function GET(request: NextRequest) {
     const { page, limit } = parsed.data;
     const rows = await prisma.collection.findMany({
       where: { ownerId: user.id },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        _count: {
-          select: {
-            items: { where: { media: { ownerId: user.id, deletedAt: null } } },
-          },
-        },
-      },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: collectionSelect(user.id),
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
       skip: (page - 1) * limit,
       take: limit + 1,
     });
     return libraryJson({
       collections: rows
         .slice(0, limit)
-        .map(({ _count, ...row }) => ({ ...row, count: _count.items })),
+        .map((row) => collectionSummary(row, user.id)),
       page,
       hasMore: rows.length > limit,
     });
@@ -54,12 +49,23 @@ export async function POST(request: NextRequest) {
       await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(7253405)");
       if ((await tx.collection.count({ where: { ownerId: user.id } })) >= 100)
         throw authError(409, "Collection limit reached (100)");
+      const ordering = await tx.collection.aggregate({
+        where: { ownerId: user.id },
+        _max: { sortOrder: true },
+      });
       return tx.collection.create({
-        data: { ownerId: user.id, ...input },
-        select: { id: true, name: true, description: true },
+        data: {
+          ownerId: user.id,
+          ...input,
+          sortOrder: (ordering._max.sortOrder ?? -1) + 1,
+        },
+        select: collectionSelect(user.id),
       });
     });
-    return libraryJson({ collection: { ...collection, count: 0 } }, 201);
+    return libraryJson(
+      { collection: collectionSummary(collection, user.id) },
+      201,
+    );
   } catch (error) {
     return authFailure(error);
   }

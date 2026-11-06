@@ -26,9 +26,11 @@ export function playbackTime(seconds: number) {
 export function HistoryPanel({
   refreshToken,
   onUnauthorized,
+  onLibraryChange,
 }: {
   refreshToken: number;
   onUnauthorized: () => void;
+  onLibraryChange?: () => void;
 }) {
   const [mode, setMode] = useState<"continue" | "history">("continue");
   const [page, setPage] = useState(1);
@@ -89,6 +91,7 @@ export function HistoryPanel({
     setLoading(true);
     setMessage("");
     setRevision((value) => value + 1);
+    onLibraryChange?.();
   }
   async function update(item: Item | "all", action: "remove" | "watched") {
     if (mutation.current) return;

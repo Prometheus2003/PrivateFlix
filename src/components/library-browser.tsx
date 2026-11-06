@@ -23,6 +23,8 @@ import {
 import { Button } from "./ui/button";
 import { MediaViewer } from "./media-viewer";
 import { CollectionDialog } from "./collection-dialog";
+import { CollectionLayoutDialog } from "./collection-layout-dialog";
+import { collectionLabel } from "@/client/collection-label";
 import { MediaDetailsDialog } from "./media-details-dialog";
 import { PlaylistMembershipDialog } from "./playlist-panel";
 import {
@@ -51,6 +53,9 @@ const collectionSchema = z.object({
   name: z.string(),
   description: z.string(),
   count: z.number(),
+  parentId: z.string().nullable().default(null),
+  coverMediaId: z.string().nullable().default(null),
+  sortOrder: z.number().int().default(0),
 });
 type Media = z.infer<typeof mediaSchema>;
 type Collection = z.infer<typeof collectionSchema>;
@@ -130,12 +135,14 @@ export function LibraryBrowser({
   onRefresh,
   onPlaybackChange,
   onPlaylistChange,
+  onLibraryChange,
 }: {
   refreshToken: number;
   onUnauthorized: () => void;
   onRefresh: () => void;
   onPlaybackChange?: () => void;
   onPlaylistChange?: () => void;
+  onLibraryChange?: () => void;
 }) {
   const [filters, setFilters] = useState(initialFilters);
   const [search, setSearch] = useState("");
@@ -165,6 +172,7 @@ export function LibraryBrowser({
   const bulkSubmitting = useRef(false);
   const mediaHeading = useRef<HTMLHeadingElement>(null);
   const [advancedError, setAdvancedError] = useState("");
+  const [arranging, setArranging] = useState(false);
   const advancedForm = useRef<HTMLFormElement>(null);
   const [dialog, setDialog] = useState<{
     mode: "create" | "edit" | "add" | "delete";
@@ -329,6 +337,7 @@ export function LibraryBrowser({
       editing ||
       playlistMedia ||
       bulkDialog ||
+      arranging ||
       error ||
       !items.some((item) =>
         ["UPLOADED", "PROCESSING"].includes(item.processingStatus),
@@ -351,6 +360,7 @@ export function LibraryBrowser({
     editing,
     playlistMedia,
     bulkDialog,
+    arranging,
   ]);
 
   async function updateItem(
@@ -393,6 +403,7 @@ export function LibraryBrowser({
               : "Added to favorites.",
       );
       setRevision((value) => value + 1);
+      onLibraryChange?.();
     } catch (failure) {
       if (controller.signal.aborted) return;
       if (failure instanceof LibraryError && failure.status === 401)
@@ -414,6 +425,48 @@ export function LibraryBrowser({
     }
   }
 
+  async function changeCover(mediaId: string | null) {
+    if (!selected) return;
+    const key = `cover-${selected.id}`,
+      controller = new AbortController();
+    mutationRequests.current.add(controller);
+    setPending((previous) => new Set(previous).add(key));
+    setNotice("");
+    try {
+      await request(`/api/collections/${selected.id}/cover`, {
+        ...json({ mediaId }),
+        signal: AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(20000),
+        ]),
+      });
+      if (!controller.signal.aborted) {
+        setNotice(
+          mediaId ? "Collection cover saved." : "Collection cover cleared.",
+        );
+        setRevision((value) => value + 1);
+        requestAnimationFrame(() => mediaHeading.current?.focus());
+      }
+    } catch (failure) {
+      if (controller.signal.aborted) return;
+      if (failure instanceof LibraryError && failure.status === 401)
+        onUnauthorized();
+      else
+        setNotice(
+          failure instanceof Error
+            ? failure.message
+            : "Cover could not be saved.",
+        );
+    } finally {
+      mutationRequests.current.delete(controller);
+      if (!controller.signal.aborted)
+        setPending((previous) => {
+          const next = new Set(previous);
+          next.delete(key);
+          return next;
+        });
+    }
+  }
   function applyAdvanced(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = new FormData(event.currentTarget);
@@ -447,6 +500,7 @@ export function LibraryBrowser({
     setRevision((value) => value + 1);
     onPlaylistChange?.();
     onPlaybackChange?.();
+    onLibraryChange?.();
     requestAnimationFrame(() => mediaHeading.current?.focus());
   }
   async function applyBulk() {
@@ -524,6 +578,13 @@ export function LibraryBrowser({
             Refresh
           </Button>
           <Button
+            variant="ghost"
+            disabled={loading || !collections.length}
+            onClick={() => setArranging(true)}
+          >
+            Arrange collections
+          </Button>
+          <Button
             variant="secondary"
             onClick={() => setDialog({ mode: "create" })}
           >
@@ -532,6 +593,41 @@ export function LibraryBrowser({
           </Button>
         </div>
       </div>
+      {collections.length > 0 && (
+        <details className="collection-shelf">
+          <summary>Browse collections ({collections.length})</summary>
+          <div className="collection-gallery">
+            {collections.map((group) => (
+              <button
+                key={group.id}
+                className="collection-tile"
+                aria-label={`Browse collection: ${collectionLabel(collections, group.id)}`}
+                aria-pressed={selected?.id === group.id}
+                onClick={() => change({ collection: group.id })}
+              >
+                {group.coverMediaId ? (
+                  <Image
+                    src={`/api/media/${group.coverMediaId}/thumbnail`}
+                    width={320}
+                    height={180}
+                    unoptimized
+                    alt=""
+                  />
+                ) : (
+                  <FolderOpen size={32} aria-hidden="true" />
+                )}
+                <strong>{group.name}</strong>
+                <span>{group.count} items</span>
+                {group.parentId && (
+                  <span className="muted">
+                    Inside {collectionLabel(collections, group.parentId)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
       <div className="browse-toolbar">
         <label className="library-search">
           <Search size={18} aria-hidden="true" />
@@ -751,7 +847,7 @@ export function LibraryBrowser({
             <option value="">All collections</option>
             {collections.map((group) => (
               <option key={group.id} value={group.id}>
-                {group.name} ({group.count})
+                {collectionLabel(collections, group.id)} ({group.count})
               </option>
             ))}
           </select>
@@ -814,13 +910,43 @@ export function LibraryBrowser({
       )}
       {selected && (
         <div className="selected-collection">
-          <div>
+          {selected.coverMediaId && (
+            <Image
+              className="selected-collection-cover"
+              src={`/api/media/${selected.coverMediaId}/thumbnail`}
+              alt={`Cover for ${selected.name}`}
+              width={224}
+              height={126}
+              unoptimized
+            />
+          )}
+          <div className="selected-collection-copy">
             <h3>{selected.name}</h3>
             {selected.description && (
               <p className="muted">{selected.description}</p>
             )}
+            {selected.parentId && (
+              <p className="muted">
+                Inside {collectionLabel(collections, selected.parentId)}
+              </p>
+            )}
+            {collections.some((group) => group.parentId === selected.id) && (
+              <p className="muted">
+                Subcollections are listed separately in Browse collections. This
+                view shows direct memberships.
+              </p>
+            )}
           </div>
           <div className="browser-actions">
+            {selected.coverMediaId && (
+              <Button
+                variant="ghost"
+                disabled={pending.has(`cover-${selected.id}`)}
+                onClick={() => void changeCover(null)}
+              >
+                Clear collection cover
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => setDialog({ mode: "edit" })}>
               <Pencil size={15} aria-hidden="true" />
               Rename collection
@@ -973,6 +1099,18 @@ export function LibraryBrowser({
                       </p>
                     )}
                     <div className="media-card-actions">
+                      {selected &&
+                        item.hasThumbnail &&
+                        item.processingStatus === "READY" && (
+                          <button
+                            className="icon-control"
+                            aria-label={`Use as collection cover: ${item.title}`}
+                            disabled={pending.has(`cover-${selected.id}`)}
+                            onClick={() => void changeCover(item.id)}
+                          >
+                            <ImageIcon size={17} aria-hidden="true" />
+                          </button>
+                        )}
                       {item.processingStatus === "FAILED" &&
                         item.canRetryProcessing && (
                           <Button
@@ -1101,7 +1239,10 @@ export function LibraryBrowser({
           mode={dialog.mode}
           media={dialog.media}
           collection={selected}
-          collections={collections}
+          collections={collections.map((group) => ({
+            ...group,
+            name: collectionLabel(collections, group.id),
+          }))}
           onUnauthorized={onUnauthorized}
           onClose={() => setDialog(null)}
           onSaved={(message, collectionId) => {
@@ -1111,6 +1252,7 @@ export function LibraryBrowser({
             else if (dialog.mode === "create" && collectionId)
               change({ collection: collectionId });
             setRevision((value) => value + 1);
+            onLibraryChange?.();
           }}
         />
       )}
@@ -1133,6 +1275,7 @@ export function LibraryBrowser({
             setViewing(null);
             setRevision((value) => value + 1);
             onPlaybackChange?.();
+            onLibraryChange?.();
           }}
         />
       )}
@@ -1165,10 +1308,27 @@ export function LibraryBrowser({
         <BulkMediaDialog
           action={bulkDialog.action}
           items={bulkDialog.items}
-          collections={collections}
+          collections={collections.map((group) => ({
+            id: group.id,
+            name: collectionLabel(collections, group.id),
+          }))}
           onUnauthorized={onUnauthorized}
           onClose={() => setBulkDialog(null)}
           onSaved={bulkSaved}
+        />
+      )}
+      {arranging && (
+        <CollectionLayoutDialog
+          collections={collections}
+          onUnauthorized={onUnauthorized}
+          onClose={() => setArranging(false)}
+          onSaved={() => {
+            setArranging(false);
+            setNotice("Collection organization saved.");
+            setRevision((value) => value + 1);
+            requestAnimationFrame(() => mediaHeading.current?.focus());
+            onLibraryChange?.();
+          }}
         />
       )}
     </section>

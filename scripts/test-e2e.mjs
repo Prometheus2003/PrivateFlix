@@ -82,6 +82,67 @@ try {
     throw new Error(
       "E2E server startup timed out; build and configure the app first",
     );
+  if (process.env.PRIVATEFLIX_E2E_MODE === "development") {
+    // Compile protected bundles before measuring UI requests. No cookie is sent:
+    // each handler must reject the request before validation or mutation.
+    const sample = "00000000-0000-4000-8000-000000000001";
+    const protectedRoutes = [
+      ["GET", "/api/auth/session"],
+      ["GET", "/api/auth/sessions"],
+      ["GET", "/api/settings"],
+      ["GET", "/api/library/summary"],
+      ["GET", "/api/system/status"],
+      ["GET", "/api/system/storage"],
+      ["GET", "/api/media"],
+      ["GET", "/api/collections"],
+      ["GET", "/api/playback"],
+      ["GET", "/api/playlists"],
+      ["GET", "/api/media/uploads"],
+      ["GET", "/api/media/upload-history"],
+      ["GET", `/api/media/${sample}`],
+      ["GET", `/api/media/${sample}/thumbnail`],
+      ["GET", `/api/media/${sample}/stream`],
+      ["GET", `/api/media/${sample}/download`],
+      ["PUT", `/api/media/${sample}/favorite`],
+      ["POST", `/api/media/${sample}/retry`],
+      ["POST", "/api/media/bulk"],
+      ["POST", "/api/media/duplicates"],
+      ["POST", "/api/media/upload/start"],
+      ["GET", `/api/media/upload/${sample}`],
+      ["PUT", `/api/media/upload/${sample}/parts/1`],
+      ["POST", `/api/media/upload/${sample}/complete`],
+      ["POST", `/api/media/upload/${sample}/cancel`],
+      ["PATCH", `/api/collections/${sample}`],
+      ["PUT", `/api/collections/${sample}/items`],
+      ["PUT", `/api/collections/${sample}/cover`],
+      ["PUT", "/api/collections/layout"],
+      ["GET", `/api/playlists/${sample}`],
+      ["PUT", `/api/playlists/${sample}/items`],
+      ["PUT", `/api/playlists/${sample}/order`],
+      ["GET", `/api/playback/${sample}`],
+      ["POST", "/api/auth/change-password"],
+      ["POST", "/api/auth/logout-all"],
+    ];
+    const deadline = Date.now() + 180000;
+    for (const [method, path] of protectedRoutes) {
+      if (Date.now() >= deadline)
+        throw new Error("Development API compilation readiness timed out");
+      const response = await fetch(`http://127.0.0.1:3319${path}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        ...(method === "GET" ? {} : { body: "{}" }),
+        signal: AbortSignal.timeout(Math.min(60000, deadline - Date.now())),
+      });
+      await response.arrayBuffer();
+      if (response.status !== 401)
+        throw new Error(
+          `Protected development readiness check returned ${response.status}: ${path}`,
+        );
+    }
+    console.info(
+      `Development API compilation ready (${protectedRoutes.length} unauthenticated checks).`,
+    );
+  }
   runner = launch([
     "node_modules/@playwright/test/cli.js",
     "test",

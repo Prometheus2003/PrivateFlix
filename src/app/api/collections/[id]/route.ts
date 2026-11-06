@@ -3,6 +3,11 @@ import { requireAuth } from "@/lib/auth/require-auth";
 import { assertSameOrigin, authError, authFailure } from "@/lib/auth/http";
 import { prisma } from "@/lib/db/prisma";
 import {
+  collectionSelect,
+  collectionSummary,
+  collectionLock,
+} from "@/lib/media/collection-layout";
+import {
   collectionSchema,
   libraryBody,
   libraryId,
@@ -18,6 +23,7 @@ export async function PATCH(request: NextRequest, context: Context) {
     const id = libraryId((await context.params).id);
     const input = await libraryBody(request, collectionSchema);
     const collection = await prisma.$transaction(async (tx) => {
+      await collectionLock(tx);
       const changed = await tx.collection.updateMany({
         where: { id, ownerId: user.id },
         data: input,
@@ -25,22 +31,10 @@ export async function PATCH(request: NextRequest, context: Context) {
       if (!changed.count) throw authError(404, "Collection not found");
       return tx.collection.findFirstOrThrow({
         where: { id, ownerId: user.id },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          _count: {
-            select: {
-              items: {
-                where: { media: { ownerId: user.id, deletedAt: null } },
-              },
-            },
-          },
-        },
+        select: collectionSelect(user.id),
       });
     });
-    const { _count, ...data } = collection;
-    return libraryJson({ collection: { ...data, count: _count.items } });
+    return libraryJson({ collection: collectionSummary(collection, user.id) });
   } catch (error) {
     return authFailure(error);
   }
@@ -51,8 +45,9 @@ export async function DELETE(request: NextRequest, context: Context) {
     assertSameOrigin(request);
     const id = libraryId((await context.params).id);
     // Cascading collection-item removal never deletes original media objects.
-    const result = await prisma.collection.deleteMany({
-      where: { id, ownerId: user.id },
+    const result = await prisma.$transaction(async (tx) => {
+      await collectionLock(tx);
+      return tx.collection.deleteMany({ where: { id, ownerId: user.id } });
     });
     if (!result.count) throw authError(404, "Collection not found");
     return libraryJson({ deleted: true });

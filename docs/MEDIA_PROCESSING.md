@@ -24,7 +24,7 @@ Queue delivery is Redis/BullMQ; PostgreSQL remains authoritative. The dispatcher
 - Originals are streamed and checked against `MAX_UPLOAD_SIZE`; thumbnail uploads are capped at 4 MiB. Dimensions above 100 megapixels or 16,384 pixels on either axis, and videos longer than seven days, are rejected.
 - Provision sufficient disk for the configured maximum original size plus overhead. Use a filesystem quota for the work volume in production. Normal completion/failure removes temporary files. Abrupt termination can leave a job directory behind; inspect and remove abandoned directories while the worker is stopped. A crash between thumbnail upload and database publication can also leave an unreferenced private object; storage reconciliation remains deployment work.
 - Decoder support depends on the installed FFmpeg build. PNG and H.264 MP4 are exercised by live tests. JPEG, WebP, GIF and other allowed video containers use the same probing pipeline; HEIC and unusual codec variants are not certified. Unsupported/corrupt media fail safely and retain their originals.
-- `READY` means metadata and thumbnail processing completed. [Original-file streaming and playback](STREAMING.md) are available. HLS, optimized renditions, larger generated photo previews and owner retry controls remain subsequent work. `ENABLE_TRANSCODING` does not yet enable a transcoder.
+- `READY` means metadata and thumbnail processing completed. [Original-file streaming and playback](STREAMING.md) are available. [Owner retry controls](LIBRARY_WORKFLOWS.md) can requeue eligible verified originals after terminal failure. HLS, optimized renditions and larger generated photo previews remain optional subsequent work. `ENABLE_TRANSCODING` does not yet enable a transcoder.
 
 ## Verification
 

@@ -29,6 +29,7 @@ export function MediaViewer({
   const video = useRef<HTMLVideoElement>(null);
   const { preferences } = usePreferences();
   const [error, setError] = useState(false);
+  const [title, setTitle] = useState(media.title);
   const [progressError, setProgressError] = useState("");
   const [resume, setResume] = useState<number | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(media.type !== "VIDEO");
@@ -210,7 +211,7 @@ export function MediaViewer({
       aria-labelledby="viewer-title"
     >
       <div className="viewer-heading">
-        <h2 id="viewer-title">{media.title}</h2>
+        <h2 id="viewer-title">{title}</h2>
         <Button
           variant="secondary"
           disabled={closing}
@@ -249,7 +250,7 @@ export function MediaViewer({
             playsInline
             preload="metadata"
             onError={() => setError(true)}
-            aria-label={media.title}
+            aria-label={title}
             onLoadedMetadata={() => {
               setReady(true);
               if (video.current) video.current.playbackRate = speed;
@@ -346,7 +347,7 @@ export function MediaViewer({
         </>
       ) : (
         <PhotoViewer
-          media={media}
+          media={{ ...media, title }}
           busy={closing}
           onPrevious={onPrevious ? () => void close(onPrevious) : undefined}
           onNext={onNext ? () => void close(onNext) : undefined}
@@ -385,6 +386,7 @@ export function MediaViewer({
       </div>
       <MediaOwnerControls
         media={media}
+        onTitleChange={setTitle}
         onUnauthorized={onUnauthorized}
         onDeleting={() => video.current?.pause()}
         onDeleted={() => {

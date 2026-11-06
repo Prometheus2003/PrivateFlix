@@ -211,9 +211,13 @@ test("batch uploads pause, resume saved parts, flag duplicates and accept drops"
         (element) => element.scrollWidth <= element.clientWidth,
       ),
     ).toBe(true);
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await workspace.evaluate((element) =>
-      element.scrollIntoView({ block: "start" }),
+      element.scrollIntoView({ block: "start", behavior: "instant" }),
     );
+    await expect
+      .poll(async () => Math.abs((await workspace.boundingBox())?.y ?? 10000))
+      .toBeLessThan(2);
     await page.screenshot({
       path: testInfo.outputPath("upload-queue-mobile.png"),
     });

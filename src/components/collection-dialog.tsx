@@ -9,6 +9,7 @@ interface CollectionSummary {
   name: string;
   description: string;
   count: number;
+  parentId?: string | null;
 }
 
 interface CollectionDialogProps {
@@ -211,6 +212,12 @@ export function CollectionDialog({
               ? `Choose a collection for “${media?.title ?? "this item"}”.`
               : "Keep related photos and videos together in your private library."}
         </p>
+        {mode === "delete" &&
+          collections.some((group) => group.parentId === collection?.id) && (
+            <p className="dialog-copy">
+              Subcollections are kept and become top-level collections.
+            </p>
+          )}
         {(mode === "create" || mode === "edit") && (
           <>
             <label className="library-field" htmlFor={`${id}-name`}>

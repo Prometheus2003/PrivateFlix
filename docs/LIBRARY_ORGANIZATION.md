@@ -17,9 +17,17 @@ All endpoints require the authenticated owner and return private, noncached JSON
 - Create collections, edit their names/descriptions, add or remove media, and
   delete a collection after confirmation. Deleting a collection removes its
   grouping and memberships; original media remains in the library and storage.
-- Collections are flat in this interface, with a maximum of 100 per owner. Names
+- Collections support saved ordering and nesting up to five levels, with a maximum of 100 per owner. Names
   accept 1–80 characters; descriptions accept up to 500. A photo or video can belong
-  to multiple collections.
+  to multiple collections. **Arrange collections** saves the complete order and
+  parent relationships together. Circular hierarchies, excess depth and stale
+  collection sets are rejected without partially applying changes.
+- Expand **Browse collections** for private cover tiles and parent breadcrumbs.
+  Select a collection, then use a ready media card's **Use as collection cover**
+  control. Covers reference existing authenticated thumbnails; originals are not
+  copied or published. Clear the cover from the selected collection header.
+  Collection counts and filters use direct memberships, with subcollections shown
+  separately. Deleting a parent grouping keeps its children at the top level.
 - Upload refresh continues updating pending uploads and the current library view.
   Visible views containing uploaded/processing media refresh every five seconds;
   hidden tabs and open dialogs/viewers skip these refreshes. Background updates
@@ -34,7 +42,8 @@ collection changes are persisted. Playback history/resume and account/session
 settings are described in [History and settings](HISTORY_SETTINGS.md). See
 [Playlists and metadata](PLAYLISTS_METADATA.md) and
 [Filters, photo viewing and bulk organization](LIBRARY_WORKFLOWS.md) for those
-workflows. Collection covers/order and nesting remain further Phase 7 work.
+workflows. The dashboard summarizes media, favorites and grouping counts, with
+private recent activity labels and links to browsing, playlists and uploads.
 
 ## API contract
 

@@ -27,10 +27,12 @@ export function PlaylistPanel({
   refreshToken,
   onUnauthorized,
   onPlaybackChange,
+  onLibraryChange,
 }: {
   refreshToken: number;
   onUnauthorized: () => void;
   onPlaybackChange: () => void;
+  onLibraryChange?: () => void;
 }) {
   const [groups, setGroups] = useState<Playlist[]>([]);
   const [selected, setSelected] = useState("");
@@ -124,7 +126,10 @@ export function PlaylistPanel({
           AbortSignal.timeout(15000),
         ]),
       });
-      if (active.current) done();
+      if (active.current) {
+        done();
+        onLibraryChange?.();
+      }
     } catch (failure) {
       if (active.current && !controller.signal.aborted) {
         if (failure instanceof OwnerApiError && failure.status === 401)

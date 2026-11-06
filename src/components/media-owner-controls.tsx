@@ -21,11 +21,13 @@ export function MediaOwnerControls({
   onUnauthorized,
   onDeleting,
   onDeleted,
+  onTitleChange,
 }: {
   media: { id: string; title: string; type: string };
   onUnauthorized?: () => void;
   onDeleting: () => void;
   onDeleted: () => void;
+  onTitleChange?: (title: string) => void;
 }) {
   const [details, setDetails] = useState<
     z.infer<typeof schema>["media"] | null
@@ -54,6 +56,7 @@ export function MediaOwnerControls({
         const result = schema.parse(value);
         if (!controller.signal.aborted) {
           setDetails(result.media);
+          onTitleChange?.(result.media.title);
           setError("");
         }
       })
@@ -64,7 +67,7 @@ export function MediaOwnerControls({
         else setError("Media details could not be loaded.");
       });
     return () => controller.abort();
-  }, [media.id, revision, onUnauthorized]);
+  }, [media.id, revision, onUnauthorized, onTitleChange]);
   async function favorite() {
     if (!details || submitting.current) return;
     submitting.current = true;

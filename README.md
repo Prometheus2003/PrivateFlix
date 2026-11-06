@@ -1,6 +1,6 @@
 # PrivateFlix
 
-Self-hosted, single-owner photo and video vault in development. Owner authentication, private uploads, resumable transfers, metadata/thumbnails, authenticated streaming and browser playback are implemented. Production deployment and the richer library features remain unfinished.
+Self-hosted, single-owner photo and video vault in development. Private uploads, browser playback, collections, playlists, viewing history and a library dashboard are implemented. Reliability and production deployment are the remaining phases.
 
 ## Current state
 
@@ -45,7 +45,7 @@ npm test
 npm run build
 ```
 
-Database tests require an explicitly configured disposable database named `privateflix_security_test`; they reset test records. Run `npm run test:integration` for those checks. `npm run test:storage` provisions disposable MinIO; with `PRIVATEFLIX_SECURITY_TEST=1` and the test database configured it also runs the production browser suite. The [processing verification runner](docs/MEDIA_PROCESSING.md) provisions all its own test services. Install Chromium with `npx playwright install chromium` before browser checks. These tests do not cover unfinished playback or production deployment.
+Database tests require an explicitly configured disposable database named `privateflix_security_test`; they reset test records. Run `npm run test:integration` for those checks. `npm run test:storage` provisions disposable MinIO; with `PRIVATEFLIX_SECURITY_TEST=1` and the test database configured it also runs the production browser suite. The [processing verification runner](docs/MEDIA_PROCESSING.md) provisions all its own test services. Install Chromium with `npx playwright install chromium` before browser checks. The suites cover authenticated playback and seeking. Production deployment verification is tracked separately.
 
 ## Build and startup
 
@@ -83,7 +83,8 @@ setup steps. Follow [Google Drive setup](docs/GOOGLE_DRIVE.md) and run
 `npm run drive:connect -- "path/to/downloaded-oauth-client.json"` on your computer.
 Live Google account verification is required before using it for a large library.
 
-The [interactive library](docs/LIBRARY_ORGANIZATION.md) supports search, media and
-favorite filters, collections, sorting, pagination and grid/list views. Favorites
-and organization changes persist in PostgreSQL. Collection deletion preserves
-originals, and the interface reports failed changes without faking a saved state.
+The [interactive library](docs/LIBRARY_ORGANIZATION.md) supports search, advanced
+filters, favorites, sorting and grid/list views. The
+[library overview and collections](docs/COLLECTIONS_DASHBOARD.md) show media counts,
+recent activity and private collection covers. Collections support saved order
+and nesting. Deleting a collection preserves the original media.

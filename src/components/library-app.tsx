@@ -33,6 +33,7 @@ import { uploadResumable } from "@/client/resumable-upload";
 import { OwnerApiError } from "@/client/api";
 import { UploadQueue } from "./upload-queue";
 import { UploadHistory } from "./upload-history";
+import { LibrarySummary } from "./library-summary";
 interface Pending {
   id: string;
   totalBytes: number;
@@ -85,6 +86,7 @@ export default function LibraryApp({ name }: { name: string }) {
   const [browseRefresh, setBrowseRefresh] = useState(0);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [playlistRefresh, setPlaylistRefresh] = useState(0);
+  const [summaryRefresh, setSummaryRefresh] = useState(0);
   const [uploads, setUploads] = useState<Pending[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [resume, setResume] = useState<Pending | null>(null);
@@ -499,21 +501,35 @@ export default function LibraryApp({ name }: { name: string }) {
             </h1>
             <p className="muted">A place for the things you want to keep.</p>
           </section>
+          <LibrarySummary
+            refreshToken={browseRefresh + summaryRefresh}
+            onUnauthorized={expireSession}
+          />
           <LibraryBrowser
             refreshToken={browseRefresh}
             onUnauthorized={expireSession}
             onRefresh={() => void refresh().catch(fail)}
             onPlaybackChange={() => setHistoryRefresh((value) => value + 1)}
             onPlaylistChange={() => setPlaylistRefresh((value) => value + 1)}
+            onLibraryChange={() => setSummaryRefresh((value) => value + 1)}
           />
           <HistoryPanel
             refreshToken={historyRefresh}
             onUnauthorized={expireSession}
+            onLibraryChange={() => {
+              setBrowseRefresh((value) => value + 1);
+              setSummaryRefresh((value) => value + 1);
+            }}
           />
           <PlaylistPanel
             refreshToken={playlistRefresh}
             onUnauthorized={expireSession}
-            onPlaybackChange={() => setHistoryRefresh((value) => value + 1)}
+            onPlaybackChange={() => {
+              setHistoryRefresh((value) => value + 1);
+              setBrowseRefresh((value) => value + 1);
+              setSummaryRefresh((value) => value + 1);
+            }}
+            onLibraryChange={() => setSummaryRefresh((value) => value + 1)}
           />
           <section className="upload-panel" id="upload">
             <div className="upload-heading">

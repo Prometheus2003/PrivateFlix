@@ -158,6 +158,7 @@ try {
         ...env,
         PRIVATEFLIX_E2E_MODE: "development",
         PRIVATEFLIX_STORAGE_TEST: "1",
+        PRIVATEFLIX_E2E_GROUP: "upload",
       },
     );
   } else {
@@ -281,6 +282,7 @@ try {
           "tests/e2e/photos.spec.ts",
           "tests/e2e/bulk.spec.ts",
           "tests/e2e/queue.spec.ts",
+          "tests/e2e/collections.spec.ts",
         ],
         {
           ...env,
@@ -301,6 +303,7 @@ try {
           ...env,
           PRIVATEFLIX_E2E_MODE: "development",
           PRIVATEFLIX_STORAGE_TEST: "1",
+          PRIVATEFLIX_E2E_GROUP: "upload",
         },
       );
     }

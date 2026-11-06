@@ -21,6 +21,7 @@ if (!database || new URL(database).pathname !== "/privateflix_security_test") {
       "tests/integration/bulk.test.ts",
       "tests/integration/retry.test.ts",
       "tests/integration/upload-workflows.test.ts",
+      "tests/integration/collection-layout.test.ts",
       "tests/integration/history-settings.test.ts",
       "tests/integration/playlists.test.ts",
     ],
