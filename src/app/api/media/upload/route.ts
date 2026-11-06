@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db/prisma";
 import { storage } from "@/lib/storage";
 import { generateUploadKey as generateStorageKey } from "@/lib/storage/upload-key";
 import { validateFileExtension, validateFileSize } from "@/lib/media/validator";
+import { checkUploadCapacity } from "@/lib/media/upload-capacity";
 import {
   validatedUploadStream,
   UploadValidationError,
@@ -67,14 +68,9 @@ export async function POST(request: NextRequest) {
       "original",
       id,
     );
+    const bytes = BigInt(expected);
     const upload = await prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(7253403)");
-      if (
-        (await tx.upload.count({
-          where: { ownerId: user.id, status: "UPLOADING" },
-        })) >= 3
-      )
-        throw authError(429, "Too many active uploads");
+      await checkUploadCapacity(tx, user.id, bytes);
       await tx.media.create({
         data: {
           id,
@@ -84,7 +80,7 @@ export async function POST(request: NextRequest) {
           originalFilename: filename,
           storageKey: key,
           mimeType: mime,
-          fileSize: BigInt(expected),
+          fileSize: bytes,
           processingStatus: "UPLOADING",
         },
       });
@@ -93,7 +89,7 @@ export async function POST(request: NextRequest) {
           ownerId: user.id,
           mediaId: id,
           status: "UPLOADING",
-          totalBytes: BigInt(expected),
+          totalBytes: bytes,
         },
         select: { id: true },
       });

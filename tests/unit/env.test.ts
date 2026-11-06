@@ -29,6 +29,16 @@ describe("runtime configuration", () => {
     expect(result.ENABLE_TRANSCODING).toBe(false);
     expect(result.SESSION_IDLE_TIMEOUT).toBe(86400);
     expect(result.STORAGE_PROVIDER).toBe("s3");
+    expect(result.MAX_LIBRARY_BYTES).toBeUndefined();
+  });
+  it("accepts an optional positive library quota in bytes", () => {
+    expect(
+      parseEnv({ ...valid, MAX_LIBRARY_BYTES: "1099511627776" })
+        .MAX_LIBRARY_BYTES,
+    ).toBe(1099511627776);
+    expect(() => parseEnv({ ...valid, MAX_LIBRARY_BYTES: "0" })).toThrow(
+      "MAX_LIBRARY_BYTES",
+    );
   });
   it("requires complete Drive credentials before selecting it for uploads", () => {
     expect(() =>

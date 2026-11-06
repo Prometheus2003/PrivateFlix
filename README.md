@@ -83,6 +83,12 @@ setup steps. Follow [Google Drive setup](docs/GOOGLE_DRIVE.md) and run
 `npm run drive:connect -- "path/to/downloaded-oauth-client.json"` on your computer.
 Live Google account verification is required before using it for a large library.
 
+Set the optional [library storage limit](docs/OWNER_UPLOAD_WORKFLOW.md#library-storage-limit)
+to cap original media and uploads in progress across both providers.
+
+The [PostgreSQL backup and restore drill](docs/DATABASE_BACKUP.md) covers library
+metadata and the owner account.
+
 The [interactive library](docs/LIBRARY_ORGANIZATION.md) supports search, advanced
 filters, favorites, sorting and grid/list views. The
 [library overview and collections](docs/COLLECTIONS_DASHBOARD.md) show media counts,

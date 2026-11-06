@@ -13,8 +13,25 @@ const statusSchema = z.object({
   capacityBytes: z.number().nonnegative().nullable(),
   usedBytes: z.number().nonnegative().nullable(),
   maxUploadBytes: z.number().positive().safe(),
+  libraryLimit: z
+    .object({
+      bytes: z.number().positive().safe(),
+      allocatedBytes: z.number().nonnegative(),
+    })
+    .nullable(),
 });
 type StorageStatus = z.infer<typeof statusSchema>;
+
+function formatCapacity(bytes: number) {
+  const units = ["bytes", "KiB", "MiB", "GiB", "TiB"];
+  const exponent = Math.min(
+    units.length - 1,
+    Math.floor(Math.log2(Math.max(1, bytes)) / 10),
+  );
+  return `${(bytes / 1024 ** exponent).toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  })} ${units[exponent]}`;
+}
 
 export function StorageSettings() {
   const [status, setStatus] = useState<StorageStatus | null>(null);
@@ -57,6 +74,7 @@ export function StorageSettings() {
   }, [refresh]);
 
   const usesDrive = status?.uploadDestination === "google-drive";
+  const libraryLimit = status?.libraryLimit;
   return (
     <section
       id="storage"
@@ -151,6 +169,16 @@ export function StorageSettings() {
               })}{" "}
               GiB. Existing media keeps its current storage location.
             </p>
+            {libraryLimit && (
+              <p className="muted mt-1">
+                PrivateFlix library limit:{" "}
+                {formatCapacity(libraryLimit.allocatedBytes)} of{" "}
+                {formatCapacity(libraryLimit.bytes)} allocated, including
+                uploads in progress.
+                {libraryLimit.allocatedBytes >= libraryLimit.bytes &&
+                  " Your library is at its limit."}
+              </p>
+            )}
           </>
         ) : null}
       </div>

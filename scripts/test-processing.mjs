@@ -112,6 +112,7 @@ try {
     SETUP_TOKEN: randomBytes(32).toString("hex"),
     APP_URL: "https://privateflix.test",
     FFMPEG_TIMEOUT: "30",
+    MAX_LIBRARY_BYTES: "1099511627776",
   };
   let ready = false;
   for (let i = 0; i < 60; i++) {

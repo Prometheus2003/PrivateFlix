@@ -12,12 +12,14 @@ vi.mock("@/lib/validation/env", () => ({
     ALLOWED_VIDEO_TYPES: "mp4",
     ALLOWED_IMAGE_TYPES: "png,jpg,jpeg",
     MAX_UPLOAD_SIZE: 1048576,
+    MAX_LIBRARY_BYTES: state.libraryLimit,
   }),
 }));
 const state = vi.hoisted(() => ({
   stored: Buffer.alloc(0),
   key: "",
   fail: false,
+  libraryLimit: undefined as number | undefined,
   afterWrite: async () => {},
 }));
 vi.mock("@/lib/storage", () => ({
@@ -31,12 +33,17 @@ vi.mock("@/lib/storage", () => ({
       await state.afterWrite();
     }),
     deleteObject: vi.fn(async () => {}),
+    createMultipartUpload: vi.fn(async () => "test-multipart"),
+    abortMultipartUpload: vi.fn(async () => {}),
   },
 }));
 import { prisma } from "@/lib/db/prisma";
 import { POST as upload } from "@/app/api/media/upload/route";
 import { GET as list } from "@/app/api/media/route";
 import { GET as progress } from "@/app/api/media/upload/[id]/route";
+import { POST as start } from "@/app/api/media/upload/start/route";
+import { GET as storageStatus } from "@/app/api/system/storage/route";
+import { mutateMultipart } from "@/lib/media/multipart";
 import { storage } from "@/lib/storage";
 const enabled = process.env.PRIVATEFLIX_SECURITY_TEST === "1";
 const png = Buffer.concat([
@@ -59,6 +66,24 @@ function request(body = png, headers: Record<string, string> = {}) {
     body: new Uint8Array(body),
   });
 }
+function ownerRequest(path: string, body?: unknown) {
+  return new NextRequest(`https://privateflix.test${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      cookie: "privateflix_session=" + token,
+      origin: "https://privateflix.test",
+      "content-type": "application/json",
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+const startRequest = () =>
+  ownerRequest("/api/media/upload/start", {
+    filename: "photo.png",
+    mime: "image/png",
+    totalBytes: png.length,
+    checksum: createHash("sha256").update(png).digest("hex"),
+  });
 describe.skipIf(!enabled)(
   "media ingestion with isolated PostgreSQL and storage transport stub",
   () => {
@@ -88,11 +113,13 @@ describe.skipIf(!enabled)(
         },
       });
       state.fail = false;
+      state.libraryLimit = undefined;
       state.key = "";
       state.stored = Buffer.alloc(0);
       state.afterWrite = async () => {};
       vi.mocked(storage.putObject).mockClear();
       vi.mocked(storage.deleteObject).mockClear();
+      vi.mocked(storage.createMultipartUpload).mockClear();
     });
     afterAll(async () => {
       await prisma.$disconnect();
@@ -127,6 +154,71 @@ describe.skipIf(!enabled)(
           where: { mediaId: media.id, type: "METADATA" },
         }),
       ).toBe(1);
+    });
+    it("reserves library capacity atomically across both upload entry points", async () => {
+      state.libraryLimit = png.length;
+      const results = await Promise.all([
+        start(startRequest()),
+        upload(request()),
+      ]);
+      expect(results.map((response) => response.status).sort()).toEqual([
+        201, 413,
+      ]);
+      const rejected = results.find((response) => response.status === 413)!;
+      expect(rejected.headers.get("cache-control")).toBe("private, no-store");
+      expect(await rejected.json()).toEqual({
+        error: "This file exceeds your remaining PrivateFlix library space",
+      });
+      expect(await prisma.media.count()).toBe(1);
+      expect(await prisma.upload.count()).toBe(1);
+      expect(
+        vi.mocked(storage.createMultipartUpload).mock.calls.length +
+          vi.mocked(storage.putObject).mock.calls.length,
+      ).toBe(1);
+      const status = await storageStatus(ownerRequest("/api/system/storage"));
+      expect(status.status).toBe(200);
+      expect((await status.json()).libraryLimit).toEqual({
+        bytes: png.length,
+        allocatedBytes: png.length,
+      });
+    });
+    it("releases cancelled transfers and unverified failed uploads", async () => {
+      state.libraryLimit = png.length;
+      const response = await start(startRequest());
+      expect(response.status).toBe(201);
+      const { uploadId } = await response.json();
+      expect((await upload(request())).status).toBe(413);
+      expect(
+        (
+          await mutateMultipart(
+            ownerRequest(`/api/media/upload/${uploadId}/cancel`, {}),
+            uploadId,
+            "cancel",
+          )
+        ).status,
+      ).toBe(200);
+      expect((await upload(request(Buffer.alloc(png.length)))).status).toBe(
+        400,
+      );
+      expect((await upload(request())).status).toBe(201);
+    });
+    it("counts retained failed originals and holds capacity until deletion cleanup", async () => {
+      state.libraryLimit = png.length;
+      const response = await upload(request());
+      expect(response.status).toBe(201);
+      const { media } = await response.json();
+      await prisma.media.update({
+        where: { id: media.id },
+        data: { processingStatus: "FAILED" },
+      });
+      expect((await start(startRequest())).status).toBe(413);
+      await prisma.media.update({
+        where: { id: media.id },
+        data: { processingStatus: "DELETING", deletedAt: new Date() },
+      });
+      expect((await start(startRequest())).status).toBe(413);
+      await prisma.media.delete({ where: { id: media.id } });
+      expect((await start(startRequest())).status).toBe(201);
     });
     it("rejects mismatched MIME and path-like filenames", async () => {
       expect(

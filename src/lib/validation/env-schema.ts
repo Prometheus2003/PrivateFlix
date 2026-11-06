@@ -70,6 +70,7 @@ export const envSchema = z
     RATE_LIMIT_WINDOW: positive.default(900),
     RATE_LIMIT_MAX: positive.default(5),
     MAX_UPLOAD_SIZE: positive.default(10737418240),
+    MAX_LIBRARY_BYTES: positive.optional(),
     ALLOWED_VIDEO_TYPES: formats.default("mp4,webm,mkv,mov,avi"),
     ALLOWED_IMAGE_TYPES: formats.default("jpg,jpeg,png,webp,gif,heic"),
     ENABLE_TRANSCODING: z

@@ -68,6 +68,7 @@ describe("owner storage configuration status", () => {
       capacityBytes: null,
       usedBytes: null,
       maxUploadBytes: 10737418240,
+      libraryLimit: null,
     });
   });
   it("returns only safe flags and limits for a configured Drive account", async () => {
@@ -88,6 +89,7 @@ describe("owner storage configuration status", () => {
       capacityBytes: null,
       usedBytes: null,
       maxUploadBytes: 10737418240,
+      libraryLimit: null,
     });
   });
   it("treats a partial credential set as not configured", async () => {

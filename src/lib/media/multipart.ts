@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth/http";
 import { generateUploadKey as generateStorageKey } from "@/lib/storage/upload-key";
 import { validateFileExtension, validateFileSize } from "./validator";
+import { checkUploadCapacity } from "./upload-capacity";
 import {
   readUploadPart,
   uploadPartLength,
@@ -77,14 +78,9 @@ export async function startMultipart(request: NextRequest) {
       "original",
       mediaId,
     );
+    const bytes = BigInt(input.totalBytes);
     const upload = await prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(7253403)");
-      if (
-        (await tx.upload.count({
-          where: { ownerId: user.id, status: "UPLOADING" },
-        })) >= 3
-      )
-        throw authError(429, "Too many active uploads");
+      await checkUploadCapacity(tx, user.id, bytes);
       await tx.media.create({
         data: {
           id: mediaId,
@@ -94,7 +90,7 @@ export async function startMultipart(request: NextRequest) {
           originalFilename: input.filename,
           storageKey: key,
           mimeType: input.mime,
-          fileSize: BigInt(input.totalBytes),
+          fileSize: bytes,
           processingStatus: "UPLOADING",
         },
       });
@@ -103,7 +99,7 @@ export async function startMultipart(request: NextRequest) {
           ownerId: user.id,
           mediaId,
           status: "UPLOADING",
-          totalBytes: BigInt(input.totalBytes),
+          totalBytes: bytes,
           partSize: UPLOAD_PART_SIZE,
           expectedChecksum: input.checksum,
         },

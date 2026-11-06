@@ -28,16 +28,24 @@ Current work: Phase 7 frontend is complete. Phase 8 covers backup and restore, c
 - Owner processing retry for verified originals after terminal metadata failures, with state/ownership rechecks, bounded new jobs, cooldown and daily caps. Settings expose pending deletion and failed cleanup counts. Terminal worker failures now update upload receipts, and deletion handles older terminal receipts safely.
 - Batch upload mode with drag/drop, a fifty-file queue, sequential resumable uploads, per-file and aggregate progress, pause/retry, format/size validation and explicit duplicate choices. Single-file and reload/resume paths share the same bounded upload helper. Owner-only upload history reports safe processing outcomes; setup/sign-in have a password visibility toggle.
 - Private collection covers, saved order and nesting up to five levels. The library overview shows counts, original-media size and a short list of recent activity. Collection moves and ordering save together, and deleting a parent preserves its children and media.
+- Optional `MAX_LIBRARY_BYTES` limits new uploads across MinIO and Drive. Both upload methods reserve space before writing data. The Storage panel shows allocated library space separately from Google account capacity.
+- PostgreSQL backup and isolated restore instructions were verified on synthetic data. The archive preserves media metadata and migration history and excludes old sessions and sign-in throttles.
 
 ## Remaining
 
 Optional transcoding and protected HLS remain unimplemented; keep `ENABLE_TRANSCODING=false`. Ready files can play when supported by the browser, with original download available for other codecs. The library checks pending processing states every five seconds while visible and idle; manual Refresh also updates pending uploads.
 
-Before production: reconcile orphaned multipart uploads and thumbnails, handle cleanup exhaustion and abandoned worker directories operationally, configure work-volume quotas, validate the full Linux deployment and TLS, and complete backup/restore and reliability checks. Frozen completion manifests remain available for explicit retry instead of automatic expiry. HEIC and unusual codec variants are not certified; unsupported files fail processing while preserving their originals.
+Phase 8 still needs media backup and restore across S3 and Drive, backup
+scheduling and retention, orphaned multipart and thumbnail reconciliation,
+cleanup recovery, disk quotas and operational monitoring. Phase 9 covers the
+Linux deployment and TLS. Frozen completion manifests remain available for
+explicit retry. Unsupported codecs and HEIC variants can fail processing while
+preserving their originals.
 
 ## References
 
 - [Owner workflow and maintenance](docs/OWNER_UPLOAD_WORKFLOW.md)
+- [PostgreSQL backup and restore drill](docs/DATABASE_BACKUP.md)
 - [Media processing, operation and verification](docs/MEDIA_PROCESSING.md)
 - [Streaming, playback and local preview](docs/STREAMING.md)
 - [Google Drive storage and account setup](docs/GOOGLE_DRIVE.md)
@@ -68,3 +76,5 @@ Phase 7 filtering/viewer/bulk checkpoint — 2026-10-28: 353 unit/database check
 Phase 7 upload queue checkpoint — 2026-10-28: 362 unit/database checks and four live processing/deletion checks passed against disposable services. Six browser scenarios passed in production and development, including a paused eleven-MiB batch upload, saved-part resume, sequential scheduling, duplicate choice, invalid-format feedback, drag/drop and upload history. The original single-file setup/reload/resume/cancellation/sign-out/sign-in regression also passed in development, including password visibility. Production build, typecheck, lint, formatting and whitespace checks passed; the synthetic mobile queue layout was visually reviewed. Cold development endpoint checks now wait within their UI request deadlines; legacy sign-out matching and interception of background read requests were corrected. The runner has focused browser/worker/upload modes and stops the disposable worker before the legacy test resets its guarded test database. Existing owner storage and files are preserved.
 
 Phase 7 closeout — 2026-11-07: 375 unit/database checks and four live worker checks passed on disposable services. Seven browser scenarios passed in production and development, with the legacy upload and resume scenario passing in a separate development run. The initial combined run encountered development timeouts on this workstation; the focused development runs verified those paths. Production build, type checking, lint, formatting and whitespace checks passed. The collection and dashboard changes require no database migration.
+
+Phase 8 storage limit and database restore checkpoint — 2026-11-07. The complete processing runner passed with 379 unit/database checks, four live worker checks, seven browser scenarios in both production and development, and the separate legacy upload-resume scenario in development. Three additional live MinIO checks passed. A PostgreSQL 16 archive was copied through the host, verified with SHA-256 and restored in a fresh network-isolated container. The drill verified the synthetic owner, three media rows, six migrations, matching media checksum records and exclusion of seeded sessions and throttles. The optional library limit is unset in the local environment.

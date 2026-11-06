@@ -59,6 +59,24 @@ This scheduled pass requires a long-running Node deployment; it is not a serverl
 
 An interruption before an S3 multipart ID is saved can still leave storage-only orphan parts. S3 lifecycle rules or storage reconciliation remain required before production deployment. Frozen completion manifests are deliberately preserved for verification retries instead of automatically deleted. Cleanup failure alerting, manual retry controls, backup/restore, and full Linux deployment validation remain part of reliability work.
 
+## Library storage limit
+
+Set `MAX_LIBRARY_BYTES` to a positive byte count in the app environment and
+restart the app to enable a total library limit. For example, `1099511627776`
+allows 1 TiB. Use the same setting on every app instance. With the setting
+omitted, uploads are subject to the per-file and concurrent upload limits.
+
+The total covers original media across both providers, including retained
+originals that failed processing. Uploads reserve their declared size before
+transfer. Cancelling an upload or failing validation releases its reservation.
+Permanently deleted originals keep their allocation until deletion cleanup
+finishes. Lowering the limit blocks new uploads that would exceed it. Current
+uploads can finish, and existing media remains accessible.
+
+Refresh **Your storage** to see the current allocation. This total measures
+PrivateFlix originals and active reservations. Monitor provider quotas and free
+disk space separately for temporary parts, thumbnails, worker files and backups.
+
 ## Verification
 
 The unit/database suite covers incremental hashing, pause, expiration, active lease protection, frozen manifest protection, idempotent cleanup, successful media protection, retry limits, and private pending-upload listing. Browser coverage uses real isolated PostgreSQL and MinIO for setup, uploading 11 MiB, pausing after the first part, reloading, resuming, confirmed cancellation, desktop/mobile layout, logout, and login. The local HTTP test runner models canonical HTTPS proxy headers; this does not certify the production TLS/Caddy deployment.

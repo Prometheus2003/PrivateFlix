@@ -57,6 +57,10 @@ test("private thumbnails, playback, seeking and downloads work on desktop and mo
     await expect(
       storagePanel.getByText("New uploads: S3 / MinIO", { exact: true }),
     ).toBeVisible({ timeout: 20000 });
+    const libraryLimit = storagePanel.getByText(
+      /PrivateFlix library limit: .+ of 1 TiB allocated, including uploads in progress/,
+    );
+    await expect(libraryLimit).toBeVisible();
     await storagePanel.locator("summary").click();
     await expect(storagePanel.getByText(/npm run drive:connect/)).toBeVisible();
     await storagePanel.locator("summary").click();
@@ -126,9 +130,10 @@ test("private thumbnails, playback, seeking and downloads work on desktop and mo
       .toBe(320);
     await page.keyboard.press("Escape");
     await expect(page.locator(".media-viewer")).toHaveCount(0);
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 375, height: 844 });
     await page.getByRole("link", { name: "Storage", exact: true }).click();
     await expect(storagePanel).toBeInViewport();
+    await expect(libraryLimit).toBeVisible();
     await storagePanel.locator("summary").click();
     expect(
       await page.evaluate(
