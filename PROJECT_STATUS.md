@@ -30,13 +30,13 @@ Current work: Phase 7 frontend is complete. Phase 8 covers backup and restore, c
 - Private collection covers, saved order and nesting up to five levels. The library overview shows counts, original-media size and a short list of recent activity. Collection moves and ordering save together, and deleting a parent preserves its children and media.
 - Optional `MAX_LIBRARY_BYTES` limits new uploads across MinIO and Drive. Both upload methods reserve space before writing data. The Storage panel shows allocated library space separately from Google account capacity.
 - PostgreSQL backup and isolated restore instructions were verified on synthetic data. The archive preserves media metadata and migration history and excludes old sessions and sign-in throttles.
+- The media backup tool exports verified originals and their referenced derivatives from MinIO and Drive. Recovery verifies the files and database inventory, copies files into a new private S3 bucket, then switches references in the restored database.
 
 ## Remaining
 
 Optional transcoding and protected HLS remain unimplemented; keep `ENABLE_TRANSCODING=false`. Ready files can play when supported by the browser, with original download available for other codecs. The library checks pending processing states every five seconds while visible and idle; manual Refresh also updates pending uploads.
 
-Phase 8 still needs media backup and restore across S3 and Drive, backup
-scheduling and retention, orphaned multipart and thumbnail reconciliation,
+Phase 8 still needs backup scheduling and retention, orphaned multipart and thumbnail reconciliation,
 cleanup recovery, disk quotas and operational monitoring. Phase 9 covers the
 Linux deployment and TLS. Frozen completion manifests remain available for
 explicit retry. Unsupported codecs and HEIC variants can fail processing while
@@ -46,6 +46,7 @@ preserving their originals.
 
 - [Owner workflow and maintenance](docs/OWNER_UPLOAD_WORKFLOW.md)
 - [PostgreSQL backup and restore drill](docs/DATABASE_BACKUP.md)
+- [Media backup and recovery](docs/MEDIA_BACKUP.md)
 - [Media processing, operation and verification](docs/MEDIA_PROCESSING.md)
 - [Streaming, playback and local preview](docs/STREAMING.md)
 - [Google Drive storage and account setup](docs/GOOGLE_DRIVE.md)
@@ -78,3 +79,5 @@ Phase 7 upload queue checkpoint — 2026-10-28: 362 unit/database checks and fou
 Phase 7 closeout — 2026-11-07: 375 unit/database checks and four live worker checks passed on disposable services. Seven browser scenarios passed in production and development, with the legacy upload and resume scenario passing in a separate development run. The initial combined run encountered development timeouts on this workstation; the focused development runs verified those paths. Production build, type checking, lint, formatting and whitespace checks passed. The collection and dashboard changes require no database migration.
 
 Phase 8 storage limit and database restore checkpoint — 2026-11-07. The complete processing runner passed with 379 unit/database checks, four live worker checks, seven browser scenarios in both production and development, and the separate legacy upload-resume scenario in development. Three additional live MinIO checks passed. A PostgreSQL 16 archive was copied through the host, verified with SHA-256 and restored in a fresh network-isolated container. The drill verified the synthetic owner, three media rows, six migrations, matching media checksum records and exclusion of seeded sessions and throttles. The optional library limit is unset in the local environment.
+
+Phase 8 media backup checkpoint — 2026-11-07. The CLI exported a mixed-provider library from disposable PostgreSQL and MinIO with a simulated Google Drive connection, then restored its three referenced files into a fresh private MinIO bucket. The drill checked retained revisions, archive integrity, database matching, checksum readback, anonymous access denial and preservation of upload history without old provider handles. The test refused pending uploads, a Drive checksum mismatch, a corrupted archive, a mismatched database and an existing destination bucket. The 202 ordinary tests, three additional live MinIO tests, lint, type checking and formatting passed. No backup of the owner library was created during verification.

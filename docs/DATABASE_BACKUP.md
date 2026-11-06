@@ -12,6 +12,9 @@ credentials or a way to recover them. Drive registry rows identify file revision
 while the corresponding media bytes live in Drive. Preserve both before relying
 on a backup for recovery.
 
+Use the [media backup and recovery guide](MEDIA_BACKUP.md) to copy referenced
+media from both providers in the same maintenance window as the database dump.
+
 ## Make and check an archive
 
 From the checkout with the local Compose database running, use PowerShell 7.4 or

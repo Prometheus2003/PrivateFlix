@@ -14,6 +14,7 @@ const directory = mkdtempSync(join(tmpdir(), prefix));
 const password = randomBytes(32).toString("hex"),
   access = randomBytes(16).toString("hex");
 const containers = [];
+const focus = process.argv[2] ?? process.env.PRIVATEFLIX_TEST_FOCUS;
 let network = false;
 function run(command, args, env = process.env, capture = false) {
   return new Promise((resolve, reject) => {
@@ -142,16 +143,36 @@ try {
     ["node_modules/prisma/build/index.js", "migrate", "deploy"],
     env,
   );
-  if (
-    !["browser", "worker", "upload"].includes(
-      process.env.PRIVATEFLIX_TEST_FOCUS,
-    )
-  ) {
+  if (!["browser", "worker", "upload", "backup"].includes(focus)) {
     await run(process.execPath, ["node_modules/vitest/vitest.mjs", "run"], env);
   } else {
     console.info("Focused verification; unit/database suite is not rerun.");
   }
-  if (process.env.PRIVATEFLIX_TEST_FOCUS === "upload") {
+  if (focus === "backup") {
+    await run(docker, [
+      "exec",
+      pg,
+      "createdb",
+      "-U",
+      "privateflix",
+      "--template=template0",
+      "privateflix_restore_fixture",
+    ]);
+    await run(
+      process.execPath,
+      [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/integration/media-backup.test.ts",
+      ],
+      {
+        ...env,
+        PRIVATEFLIX_BACKUP_TEST: "1",
+        PRIVATEFLIX_BACKUP_TEST_PG: pg,
+        DOCKER_BIN: docker,
+      },
+    );
+  } else if (focus === "upload") {
     await run(
       process.execPath,
       ["scripts/test-e2e.mjs", "tests/e2e/upload-ui.spec.ts"],
@@ -259,7 +280,7 @@ try {
       },
     );
     const modes =
-      process.env.PRIVATEFLIX_TEST_FOCUS === "worker"
+      focus === "worker"
         ? []
         : process.env.PRIVATEFLIX_E2E_MODE
           ? [process.env.PRIVATEFLIX_E2E_MODE]

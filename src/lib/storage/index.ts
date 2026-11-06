@@ -14,8 +14,7 @@ import { DriveStorageAdapter } from "./drive";
 import { routedStorage } from "./routed";
 import { driveObjectRegistry } from "./drive-registry";
 
-function createStorage(): StorageAdapter {
-  const s3 = createS3StorageAdapter();
+export function createStorage(s3 = createS3StorageAdapter()): StorageAdapter {
   let drive: DriveStorageAdapter | undefined;
   const getDrive = () => {
     if (drive) return drive;

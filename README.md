@@ -86,8 +86,9 @@ Live Google account verification is required before using it for a large library
 Set the optional [library storage limit](docs/OWNER_UPLOAD_WORKFLOW.md#library-storage-limit)
 to cap original media and uploads in progress across both providers.
 
-The [PostgreSQL backup and restore drill](docs/DATABASE_BACKUP.md) covers library
-metadata and the owner account.
+The [backup and recovery guide](docs/MEDIA_BACKUP.md) covers files stored on
+MinIO and Google Drive. Pair each media archive with its
+[PostgreSQL backup](docs/DATABASE_BACKUP.md).
 
 The [interactive library](docs/LIBRARY_ORGANIZATION.md) supports search, advanced
 filters, favorites, sorting and grid/list views. The

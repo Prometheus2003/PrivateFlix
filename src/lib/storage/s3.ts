@@ -95,6 +95,7 @@ function metadata(result: {
 // server-only credentials and path-style S3 requests compatible with MinIO.
 export function createS3StorageAdapter(
   suppliedClient?: S3Client,
+  mode: "normal" | "read-only" | "new-bucket" = "normal",
 ): StorageAdapter {
   let client: S3Client | undefined = suppliedClient;
   function getClient() {
@@ -123,8 +124,11 @@ export function createS3StorageAdapter(
     const Bucket = bucket();
     try {
       await c.send(new HeadBucketCommand({ Bucket }));
+      if (mode === "read-only") return;
+      if (mode === "new-bucket")
+        throw new Error("Restore bucket already exists");
     } catch (error) {
-      if (!missing(error)) throw error;
+      if (mode === "read-only" || !missing(error)) throw error;
       const region = getEnv().S3_REGION;
       try {
         await c.send(
@@ -141,6 +145,7 @@ export function createS3StorageAdapter(
         );
       } catch (creationError) {
         if (
+          mode === "new-bucket" ||
           !(creationError instanceof Error) ||
           creationError.name !== "BucketAlreadyOwnedByYou"
         )
@@ -162,7 +167,9 @@ export function createS3StorageAdapter(
     )
       throw new Error("Private bucket policy verification failed");
   }
-  function ready() {
+  function ready(write = false) {
+    if (write && mode === "read-only")
+      throw new Error("Storage is open for read-only backup");
     readiness ??= initialize().catch((error) => {
       readiness = undefined;
       throw error;
@@ -177,7 +184,7 @@ export function createS3StorageAdapter(
   }
   return {
     async putObject(key, body, options) {
-      await ready();
+      await ready(true);
       const upload = new Upload({
         client: getClient(),
         queueSize: 2,
@@ -229,14 +236,14 @@ export function createS3StorageAdapter(
       return metadata(await head(key));
     },
     async deleteObject(key) {
-      await ready();
+      await ready(true);
       await getClient().send(
         new DeleteObjectCommand({ Bucket: bucket(), Key: key }),
       );
     },
     async deleteObjects(keys) {
       if (!keys.length) return;
-      await ready();
+      await ready(true);
       for (let offset = 0; offset < keys.length; offset += 1000) {
         const result = await getClient().send(
           new DeleteObjectsCommand({
@@ -264,7 +271,7 @@ export function createS3StorageAdapter(
       }
     },
     async createMultipartUpload(key, contentType) {
-      await ready();
+      await ready(true);
       const result = await getClient().send(
         new CreateMultipartUploadCommand({
           Bucket: bucket(),
@@ -284,7 +291,7 @@ export function createS3StorageAdapter(
         body.length > 64 * 1024 * 1024
       )
         throw new Error("Invalid upload part");
-      await ready();
+      await ready(true);
       const result = await getClient().send(
         new UploadPartCommand({
           Bucket: bucket(),
@@ -308,7 +315,7 @@ export function createS3StorageAdapter(
         )
       )
         throw new Error("Invalid upload manifest");
-      await ready();
+      await ready(true);
       await getClient().send(
         new CompleteMultipartUploadCommand({
           Bucket: bucket(),
@@ -324,7 +331,7 @@ export function createS3StorageAdapter(
       );
     },
     async abortMultipartUpload(key, uploadId) {
-      await ready();
+      await ready(true);
       await getClient().send(
         new AbortMultipartUploadCommand({
           Bucket: bucket(),
